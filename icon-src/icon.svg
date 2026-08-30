@@ -1,0 +1,47 @@
+<svg width="1024" height="1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4f46e5"/>
+      <stop offset="0.55" stop-color="#6366f1"/>
+      <stop offset="1" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.18"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- macOS squircle 底板 -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)"/>
+  <rect x="100" y="100" width="824" height="412" rx="185" fill="url(#sheen)"/>
+
+  <!-- 机器人天线 -->
+  <rect x="497" y="252" width="30" height="72" rx="15" fill="#e0e7ff"/>
+  <circle cx="512" cy="234" r="30" fill="#a5f3fc"/>
+
+  <!-- 机器人头部 -->
+  <rect x="312" y="316" width="400" height="296" rx="84" fill="#ffffff"/>
+  <!-- 耳侧模块 -->
+  <rect x="272" y="416" width="52" height="96" rx="26" fill="#c7d2fe"/>
+  <rect x="700" y="416" width="52" height="96" rx="26" fill="#c7d2fe"/>
+
+  <!-- 眼睛 -->
+  <circle cx="428" cy="452" r="40" fill="#312e81"/>
+  <circle cx="596" cy="452" r="40" fill="#312e81"/>
+  <circle cx="441" cy="439" r="13" fill="#ffffff"/>
+  <circle cx="609" cy="439" r="13" fill="#ffffff"/>
+
+  <!-- 嘴部指示灯条 -->
+  <rect x="392" y="530" width="240" height="26" rx="13" fill="#c7d2fe"/>
+
+  <!-- 监控脉搏线 -->
+  <path d="M 262 726 H 372 L 416 646 L 474 792 L 528 668 L 566 726 H 762"
+        stroke="#a5f3fc" stroke-width="30" fill="none"
+        stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- 四个智能体节点 -->
+  <circle cx="242" cy="330" r="22" fill="#a5f3fc" opacity="0.9"/>
+  <circle cx="782" cy="330" r="22" fill="#a5f3fc" opacity="0.9"/>
+  <circle cx="242" cy="812" r="22" fill="#c4b5fd" opacity="0.9"/>
+  <circle cx="782" cy="812" r="22" fill="#c4b5fd" opacity="0.9"/>
+</svg>
