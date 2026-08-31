@@ -8,7 +8,8 @@
 
 | 平台 | 安装包 |
 |---|---|
-| macOS（Apple Silicon） | [agent-tower-1.0.0.dmg](https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.0.0/agent-tower-1.0.0.dmg) |
+| macOS（Apple Silicon） | [agent-tower-1.0.0-arm64.dmg](https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.0.0/agent-tower-1.0.0-arm64.dmg) |
+| macOS（Intel） | [agent-tower-1.0.0-x64.dmg](https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.0.0/agent-tower-1.0.0-x64.dmg) |
 | Windows 10/11（x64） | [agent-tower-1.0.0-setup.exe](https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.0.0/agent-tower-1.0.0-setup.exe) |
 
 > 安装包未做代码签名：macOS 首次打开如遇拦截，右键 App 选「打开」或执行 `xattr -cr /Applications/AgentTower.app`；Windows 如遇 SmartScreen 提示，点「更多信息 → 仍要执行」。

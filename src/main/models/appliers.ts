@@ -1,19 +1,15 @@
 import * as fs from 'fs'
 import { join } from 'path'
-import { HOME, exists, readJson, readJsonc, readYaml } from '../lib/fs'
+import { HOME, commitWithVerify, exists, loadForWrite, readJson, readJsonc, readYaml } from '../lib/fs'
 import type { ApplierInfo, ApplyOptions, ApplyResult, ModelProfile } from '@shared/types'
 
 /**
  * 模型配置写入器：把 Profile 写入各智能体的配置文件。
- * 原则：写入前先做带时间戳的备份；只动自己认识的键；失败不破坏原文件。
+ * 原则：
+ * - 写前解析失败 → 拒写（防止上游格式变更后静默覆盖用户配置）；
+ * - 写入前先做带时间戳的备份；只动自己认识的键；
+ * - 写后回读校验，失败自动回滚（见 lib/fs 的 loadForWrite / commitWithVerify）。
  */
-
-function backup(filePath: string): string | null {
-  if (!exists(filePath)) return null
-  const bak = `${filePath}.agentmgr-bak-${Date.now()}`
-  fs.copyFileSync(filePath, bak)
-  return bak
-}
 
 function writeJson(filePath: string, data: unknown): void {
   fs.mkdirSync(join(filePath, '..'), { recursive: true })
@@ -53,7 +49,7 @@ const zcodeApplier: Applier = {
       : '未配置自定义供应商'
   },
   apply(profile, opts) {
-    const cfg = readJson<Record<string, unknown>>(this.configPath) || {}
+    const cfg = loadForWrite(this.configPath, (p) => readJson<Record<string, unknown>>(p))
     const providers = (cfg.provider as Record<string, unknown>) || {}
     const key = `agentmgr:${profile.id}`
     providers[key] = {
@@ -73,10 +69,9 @@ const zcodeApplier: Applier = {
       )
     }
     cfg.provider = providers
-    const bak = backup(this.configPath)
-    writeJson(this.configPath, cfg)
+    const bak = commitWithVerify(this.configPath, () => writeJson(this.configPath, cfg), (p) => readJson(p))
     const def = opts.setDefault && profile.defaultModel ? `，默认模型设为 ${profile.defaultModel}（请在 ZCode 设置中选择该供应商）` : ''
-    return { message: `已写入供应商 ${key}${def}`, backupPath: bak || undefined }
+    return { message: `已写入供应商 ${key}${def}`, backupPath: bak }
   }
 }
 
@@ -89,7 +84,8 @@ function opencodeCurrent(configPath: string): string {
 }
 
 function opencodeApply(configPath: string, profile: ModelProfile, opts: ApplyOptions, isJsonc: boolean): { message: string; backupPath?: string } {
-  const cfg = (isJsonc ? readJsonc<Record<string, unknown>>(configPath) : readJson<Record<string, unknown>>(configPath)) || {}
+  const read = isJsonc ? (p: string) => readJsonc<Record<string, unknown>>(p) : (p: string) => readJson<Record<string, unknown>>(p)
+  const cfg = loadForWrite(configPath, read)
   const providers = (cfg.provider as Record<string, unknown>) || {}
   providers[profile.id] = {
     npm: profile.kind === 'anthropic' ? '@ai-sdk/anthropic' : '@ai-sdk/openai-compatible',
@@ -101,11 +97,10 @@ function opencodeApply(configPath: string, profile: ModelProfile, opts: ApplyOpt
   if (opts.setDefault && profile.defaultModel) {
     cfg.model = `${profile.id}/${profile.defaultModel}`
   }
-  const bak = backup(configPath)
-  writeJson(configPath, cfg)
+  const bak = commitWithVerify(configPath, () => writeJson(configPath, cfg), read)
   return {
     message: `已写入供应商 ${profile.id}${opts.setDefault && profile.defaultModel ? `，默认模型设为 ${cfg.model}` : ''}`,
-    backupPath: bak || undefined
+    backupPath: bak
   }
 }
 
@@ -113,6 +108,7 @@ const opencodeApplier: Applier = {
   agentId: 'opencode',
   agentName: 'OpenCode',
   support: 'full',
+  note: '写入时整文件按标准 JSON 序列化，原文件中的注释会被移除（写前自动备份）',
   configPath: join(HOME, '.config/opencode/opencode.jsonc'),
   current() {
     return opencodeCurrent(this.configPath)
@@ -148,14 +144,13 @@ const ycliApplier: Applier = {
     return cfg?.provider ? `${cfg.provider} / ${cfg.model || '?'}（${cfg.base_url || '?'}）` : '未配置'
   },
   apply(profile) {
-    const cfg = (readYaml<Record<string, unknown>>(this.configPath) || {}) as Record<string, unknown>
+    const cfg = loadForWrite(this.configPath, (p) => readYaml<Record<string, unknown>>(p))
     cfg.provider = 'openai'
     cfg.model = profile.defaultModel || profile.models[0]?.id
     cfg.api_key = profile.apiKey
     cfg.base_url = profile.baseURL
-    const bak = backup(this.configPath)
-    writeYaml(this.configPath, cfg)
-    return { message: `已写入 provider=${cfg.provider}, model=${String(cfg.model)}`, backupPath: bak || undefined }
+    const bak = commitWithVerify(this.configPath, () => writeYaml(this.configPath, cfg), (p) => readYaml(p))
+    return { message: `已写入 provider=${String(cfg.provider)}, model=${String(cfg.model)}`, backupPath: bak }
   }
 }
 
@@ -175,7 +170,7 @@ const dshApplier: Applier = {
   },
   apply(profile, opts) {
     const envName = `AGENTMGR_${profile.id.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_API_KEY`
-    const cfg = (readYaml<Record<string, unknown>>(this.configPath) || {}) as Record<string, unknown>
+    const cfg = loadForWrite(this.configPath, (p) => readYaml<Record<string, unknown>>(p))
     const llm = (cfg['llm-pi-ai'] as Record<string, unknown>) || {}
     const providers = (llm.providers as Record<string, unknown>) || {}
     providers[profile.id] = {
@@ -195,11 +190,10 @@ const dshApplier: Applier = {
     if (opts.setDefault && profile.defaultModel) {
       cfg['agent-default-model'] = { provider: profile.id, model: profile.defaultModel }
     }
-    const bak = backup(this.configPath)
-    writeYaml(this.configPath, cfg)
+    const bak = commitWithVerify(this.configPath, () => writeYaml(this.configPath, cfg), (p) => readYaml(p))
     return {
       message: `已写入供应商 ${profile.id}；请设置环境变量 ${envName}=${profile.apiKey.slice(0, 4)}… 后重启 DSH 生效`,
-      backupPath: bak || undefined
+      backupPath: bak
     }
   }
 }
@@ -271,12 +265,8 @@ export function applyProfile(
       continue
     }
     try {
+      // apply 内部已完成 备份→写入→回读校验→失败自动回滚（见 commitWithVerify）
       const r = applier.apply(profile, opts)
-      // 写后回读校验，确保配置文件仍可解析
-      if (applier.configPath.endsWith('.json') || applier.configPath.endsWith('.jsonc')) {
-        const check = readJsonc(applier.configPath)
-        if (!check) throw new Error('写入后配置文件解析失败（已保留备份）')
-      }
       results.push({
         agentId,
         agentName: applier.agentName,

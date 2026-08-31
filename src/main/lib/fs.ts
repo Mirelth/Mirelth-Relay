@@ -158,6 +158,70 @@ export function mtimeIso(p: string): string | undefined {
   }
 }
 
+// ---------- 安全写：解析失败拒写 + 校验失败自动回滚 ----------
+
+/** 写前异常：格式漂移/校验失败，应中止并向用户解释 */
+export class ConfigWriteError extends Error {}
+
+/**
+ * 写入前读取原配置。文件存在但解析失败或不是对象结构（上游版本改了格式）→ 抛错拒写，
+ * 绝不允许静默降级成空对象后把用户已有配置整体覆盖掉。文件不存在返回 {} 供新建。
+ */
+export function loadForWrite(
+  filePath: string,
+  read: (p: string) => unknown
+): Record<string, unknown> {
+  const parsed = read(filePath)
+  if (parsed == null) {
+    if (exists(filePath))
+      throw new ConfigWriteError('无法解析现有配置（文件格式可能已变更），已中止写入，原文件未做任何改动')
+    return {}
+  }
+  if (typeof parsed !== 'object' || Array.isArray(parsed))
+    throw new ConfigWriteError('现有配置不是对象结构，已中止写入，原文件未做任何改动')
+  return parsed as Record<string, unknown>
+}
+
+/**
+ * 备份 → 写入 → 回读校验 三步原子化：
+ * 写入后立刻用同一解析器回读，失败则自动从备份回滚（原文件不存在时删除新建文件），
+ * 保证「校验不过 = 现场恢复原状」，而不是留下写坏的半截配置只给用户一个备份路径。
+ */
+export function commitWithVerify(
+  filePath: string,
+  write: () => void,
+  read: (p: string) => unknown
+): string | undefined {
+  const bak = exists(filePath) ? `${filePath}.agentmgr-bak-${Date.now()}` : null
+  if (bak) fs.copyFileSync(filePath, bak)
+  let failure: unknown = null
+  try {
+    write()
+    const parsed = read(filePath)
+    if (parsed == null || typeof parsed !== 'object' || Array.isArray(parsed))
+      throw new ConfigWriteError('写入后回读校验失败')
+  } catch (err) {
+    failure = err
+  }
+  if (failure) {
+    if (bak) {
+      try {
+        fs.copyFileSync(bak, filePath)
+      } catch {
+        /* 回滚失败：保留备份文件本身 */
+      }
+      throw new ConfigWriteError('写入校验失败，已自动回滚原配置')
+    }
+    try {
+      fs.unlinkSync(filePath)
+    } catch {
+      /* 新建文件删除失败时忽略 */
+    }
+    throw new ConfigWriteError('写入校验失败，已撤销本次新建')
+  }
+  return bak ?? undefined
+}
+
 /** 读取 macOS 应用包版本（Info.plist 为 XML，借助 plutil 转换） */
 export function readAppBundleVersion(appPath: string): string | undefined {
   try {

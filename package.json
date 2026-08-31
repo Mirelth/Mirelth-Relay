@@ -3,8 +3,10 @@
   "version": "1.0.0",
   "description": "AgentTower 智能体塔台 —— 跨平台 AI 编码智能体监控与管理工具",
   "main": "./out/main/index.js",
-  "author": "example.com",
-  "homepage": "https://electron-vite.org",
+  "author": {
+    "name": "WeiGuangXunTu"
+  },
+  "homepage": "https://cnb.cool/WeiGuangXunTu/AgentTower",
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint --cache .",
@@ -14,6 +16,8 @@
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
     "build": "npm run typecheck && electron-vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ electron-builder --win --x64",
@@ -52,6 +56,7 @@
     "react-router-dom": "^7.18.3",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3",
-    "vite": "^7.2.6"
+    "vite": "^7.2.6",
+    "vitest": "^4.1.11"
   }
 }

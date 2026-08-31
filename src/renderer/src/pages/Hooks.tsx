@@ -61,16 +61,39 @@ export default function Hooks(): React.JSX.Element {
         </div>
       )}
 
+      {availableTargets.some((t) => !t.verified) && (
+        <div className="card px-4 py-3 text-xs leading-relaxed" style={{ color: 'var(--muted)' }}>
+          <span
+            className="badge mr-2"
+            style={{ background: 'color-mix(in srgb, var(--warn) 18%, transparent)', color: 'var(--warn)' }}
+          >
+            生效状态说明
+          </span>
+          标注「未验证生效」的智能体：配置已按 Anthropic hooks 通用格式正确写入文件，但
+          <b style={{ color: 'var(--warn)' }}>尚未实测该智能体运行时是否执行这些 hooks</b>（取决于其版本与实现）。写入前自动备份，格式无法解析时拒绝写入。
+        </div>
+      )}
+
       {/* 按智能体分组 */}
       {[...new Set(hooks.map((h) => h.agentId))].map((agentId) => {
         const list = hooks.filter((h) => h.agentId === agentId)
         const first = list[0]
+        const tgt = targets.find((t) => t.agentId === agentId)
         return (
           <div key={agentId} className="card overflow-hidden">
             <div className="flex items-center gap-2 border-b px-4 py-3" style={{ borderColor: 'var(--border)' }}>
               <span className="h-2.5 w-2.5 rounded-full" style={{ background: first.color }} />
               <span className="font-medium">{first.agentName}</span>
               <span className="text-xs" style={{ color: 'var(--muted)' }}>{list.length} 个 hook</span>
+              {tgt && !tgt.verified && (
+                <span
+                  className="badge"
+                  title="写入成功，但该智能体是否执行 hooks 尚未实测"
+                  style={{ background: 'color-mix(in srgb, var(--warn) 18%, transparent)', color: 'var(--warn)' }}
+                >
+                  未验证生效
+                </span>
+              )}
             </div>
             <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
               {list.map((h) => (

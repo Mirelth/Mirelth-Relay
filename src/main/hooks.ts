@@ -1,6 +1,6 @@
 import * as fs from 'fs'
 import { join } from 'path'
-import { HOME, exists, readJson } from './lib/fs'
+import { HOME, commitWithVerify, exists, loadForWrite, readJson } from './lib/fs'
 import type { HookCreateInput, HookEntry, HooksTarget } from '@shared/types'
 
 /**
@@ -121,20 +121,16 @@ export function listHookTargets(): HooksTarget[] {
   })
 }
 
-function backup(p: string): string {
-  const bak = `${p}.agentmgr-bak-${Date.now()}`
-  fs.copyFileSync(p, bak)
-  return bak
-}
-
 function writeHooks(settingsPath: string, hooks: Record<string, RawMatcherGroup[]>): string {
-  const cfg = readJson<Record<string, unknown>>(settingsPath) || {}
+  const cfg = loadForWrite(settingsPath, (p) => readJson<Record<string, unknown>>(p))
   if (Object.keys(hooks).length > 0) cfg.hooks = hooks
   else delete cfg.hooks
-  const bak = backup(settingsPath)
-  fs.writeFileSync(settingsPath, JSON.stringify(cfg, null, 2) + '\n')
-  const check = readJson(settingsPath)
-  if (!check) throw new Error('写入后配置文件解析失败（已保留备份）')
+  const bak = commitWithVerify(
+    settingsPath,
+    () => fs.writeFileSync(settingsPath, JSON.stringify(cfg, null, 2) + '\n'),
+    (p) => readJson(p)
+  )
+  if (!bak) throw new Error('settings 文件不存在，无法写入')
   return bak
 }
 
