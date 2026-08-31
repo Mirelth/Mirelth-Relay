@@ -31,3 +31,19 @@ main:
               script: npm run typecheck
             - name: test
               script: npm test
+  # API/手动触发（POST /-/build/start {"branch":"main","event":"api_trigger"}）
+  api_trigger:
+    - name: verify-manual
+      docker:
+        image: node:22
+      stages:
+        - name: 安装依赖
+          jobs:
+            - name: npm ci
+              script: npm ci --ignore-scripts --registry=https://registry.npmmirror.com
+        - name: 类型检查与单元测试
+          jobs:
+            - name: typecheck
+              script: npm run typecheck
+            - name: test
+              script: npm test
