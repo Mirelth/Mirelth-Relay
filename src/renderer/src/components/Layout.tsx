@@ -107,8 +107,8 @@ export default function Layout() {
               <Bot size={18} />
             </div>
             <div>
-              <div className="text-sm font-semibold">Agent Manager</div>
-              <div className="text-xs" style={{ color: 'var(--muted)' }}>智能体监控台</div>
+              <div className="text-sm font-semibold">AgentTower</div>
+              <div className="text-xs" style={{ color: 'var(--muted)' }}>智能体塔台</div>
             </div>
           </div>
           <nav className="flex-1 space-y-1 px-2">

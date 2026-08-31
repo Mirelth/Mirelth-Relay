@@ -1,4 +1,4 @@
-# AI Agent Manager（智能体监控台）
+# AgentTower（智能体塔台）
 
 跨平台桌面工具，统一监控和管理电脑上已安装的 AI 编码智能体：检测安装状态、汇总 Skills、监控 MCP 服务、聚合 Git 提交、统计 Token 消耗。基于 **Electron 39 + electron-vite + React 19 + TypeScript + Tailwind 4 + ECharts**。
 
