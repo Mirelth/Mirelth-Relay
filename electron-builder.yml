@@ -13,6 +13,10 @@ asarUnpack:
   - resources/**
 win:
   executableName: AgentTower
+  # 拿到 Windows 代码签名证书（.pfx/.p12）后启用，流程见 docs/SIGNING.md。
+  # CI 更推荐环境变量注入（CSC_LINK / CSC_KEY_PASSWORD），不必改这里。
+  # certificateFile: certs/agenttower.p12
+  # certificateSubjectName: WeiGuangXunTu
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
@@ -25,6 +29,9 @@ mac:
     - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
     - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+  # 启用 macOS 签名+公证的前提（见 docs/SIGNING.md）：
+  # 1) 构建钥匙串导入 "Developer ID Application" 证书 → 自动完成签名；
+  # 2) 把下面的 notarize 改为 true，并提供 APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID。
   notarize: false
 dmg:
   artifactName: ${name}-${version}-${arch}.${ext}

@@ -58,8 +58,11 @@ ZCode、Trae CN（字节）、Qoder（阿里）、CodeBuddy（腾讯）、WorkBu
 npm install         # 需要时设置 ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
 npm run dev         # 开发模式（主进程改动自动重启，渲染进程热更新）
 npm run typecheck   # 类型检查
+npm test            # 单元测试（vitest：安全写入 / 模型配置写入器 / hooks / 扫描器回归）
 npm run build:mac   # 打包 macOS（win/linux 同理：build:win / build:linux）
 ```
+
+发布相关：代码签名与公证流程见 [docs/SIGNING.md](docs/SIGNING.md)；CNB 发行版上传与发版检查清单见 [docs/RELEASE.md](docs/RELEASE.md)。
 
 调试辅助：`AGENTMGR_SHOT=<目录> npm run dev` —— 启动后自动逐页截图（暗色 + 亮色各一轮）并退出（用于自动化视觉验证）。
 
