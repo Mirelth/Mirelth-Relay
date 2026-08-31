@@ -154,46 +154,48 @@ const ycliApplier: Applier = {
   }
 }
 
-// ---------- DSH：settings.yaml，API key 走环境变量 ----------
+// ---------- DSH：settings.yaml，API key 走环境变量（Web 与 Desktop 各一份配置） ----------
 
-const dshApplier: Applier = {
-  agentId: 'dsh',
-  agentName: 'DSH',
-  support: 'partial',
-  note: 'DSH 通过环境变量读取 API key：写入后需设置环境变量并在启动 DSH 前导出',
-  configPath: join(HOME, '.dsh/settings.yaml'),
-  current() {
-    const cfg = readYaml<{ 'llm-pi-ai'?: { providers?: Record<string, unknown> }; 'agent-default-model'?: { provider?: string; model?: string } }>(this.configPath)
-    const ids = Object.keys(cfg?.['llm-pi-ai']?.providers || {})
-    const def = cfg?.['agent-default-model']
-    return ids.length ? `${ids.join('、')}${def?.provider ? `（默认 ${def.provider}/${def.model}）` : ''}` : '未配置自定义供应商'
-  },
-  apply(profile, opts) {
-    const envName = `AGENTMGR_${profile.id.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_API_KEY`
-    const cfg = loadForWrite(this.configPath, (p) => readYaml<Record<string, unknown>>(p))
-    const llm = (cfg['llm-pi-ai'] as Record<string, unknown>) || {}
-    const providers = (llm.providers as Record<string, unknown>) || {}
-    providers[profile.id] = {
-      displayName: profile.name,
-      apiKeyEnv: envName,
-      api: 'openai-completions',
-      baseURL: profile.baseURL,
-      models: profile.models.map((m) => ({
-        id: m.id,
-        ...(m.name ? { name: m.name } : {}),
-        ...(m.contextWindow ? { contextWindow: m.contextWindow } : {}),
-        ...(m.maxTokens ? { maxTokens: m.maxTokens } : {})
-      }))
-    }
-    llm.providers = providers
-    cfg['llm-pi-ai'] = llm
-    if (opts.setDefault && profile.defaultModel) {
-      cfg['agent-default-model'] = { provider: profile.id, model: profile.defaultModel }
-    }
-    const bak = commitWithVerify(this.configPath, () => writeYaml(this.configPath, cfg), (p) => readYaml(p))
-    return {
-      message: `已写入供应商 ${profile.id}；请设置环境变量 ${envName}=${profile.apiKey.slice(0, 4)}… 后重启 DSH 生效`,
-      backupPath: bak
+function createDshApplier(agentId: string, agentName: string, cfgPath: string): Applier {
+  return {
+    agentId,
+    agentName,
+    support: 'partial',
+    note: 'DSH 通过环境变量读取 API key：写入后需设置环境变量并在启动 DSH 前导出',
+    configPath: cfgPath,
+    current() {
+      const cfg = readYaml<{ 'llm-pi-ai'?: { providers?: Record<string, unknown> }; 'agent-default-model'?: { provider?: string; model?: string } }>(cfgPath)
+      const ids = Object.keys(cfg?.['llm-pi-ai']?.providers || {})
+      const def = cfg?.['agent-default-model']
+      return ids.length ? `${ids.join('、')}${def?.provider ? `（默认 ${def.provider}/${def.model}）` : ''}` : '未配置自定义供应商'
+    },
+    apply(profile, opts) {
+      const envName = `AGENTMGR_${profile.id.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_API_KEY`
+      const cfg = loadForWrite(cfgPath, (p) => readYaml<Record<string, unknown>>(p))
+      const llm = (cfg['llm-pi-ai'] as Record<string, unknown>) || {}
+      const providers = (llm.providers as Record<string, unknown>) || {}
+      providers[profile.id] = {
+        displayName: profile.name,
+        apiKeyEnv: envName,
+        api: 'openai-completions',
+        baseURL: profile.baseURL,
+        models: profile.models.map((m) => ({
+          id: m.id,
+          ...(m.name ? { name: m.name } : {}),
+          ...(m.contextWindow ? { contextWindow: m.contextWindow } : {}),
+          ...(m.maxTokens ? { maxTokens: m.maxTokens } : {})
+        }))
+      }
+      llm.providers = providers
+      cfg['llm-pi-ai'] = llm
+      if (opts.setDefault && profile.defaultModel) {
+        cfg['agent-default-model'] = { provider: profile.id, model: profile.defaultModel }
+      }
+      const bak = commitWithVerify(cfgPath, () => writeYaml(cfgPath, cfg), (p) => readYaml(p))
+      return {
+        message: `已写入供应商 ${profile.id}；请设置环境变量 ${envName}=${profile.apiKey.slice(0, 4)}… 后重启 DSH 生效`,
+        backupPath: bak
+      }
     }
   }
 }
@@ -208,7 +210,14 @@ const UNSUPPORTED: { agentId: string; agentName: string; color: string; note: st
   { agentId: 'agnes', agentName: 'AgnesCode', color: '#ec4899', note: '使用平台内置 OAuth 供应商体系' }
 ]
 
-const APPLIERS: Applier[] = [zcodeApplier, opencodeApplier, loomyApplier, ycliApplier, dshApplier]
+const APPLIERS: Applier[] = [
+  zcodeApplier,
+  opencodeApplier,
+  loomyApplier,
+  ycliApplier,
+  createDshApplier('dsh-web', 'DSH Web', join(HOME, '.dsh/settings.yaml')),
+  createDshApplier('dsh-desktop', 'DSH Desktop', join(HOME, '.dsh-desktop/settings.yaml'))
+]
 
 export function listAppliers(): ApplierInfo[] {
   const out: ApplierInfo[] = []
@@ -243,7 +252,8 @@ function applierColor(agentId: string): string {
     opencode: '#f97316',
     loomy: '#06b6d4',
     ycli: '#64748b',
-    dsh: '#8b5cf6'
+    'dsh-web': '#8b5cf6',
+    'dsh-desktop': '#a78bfa'
   }
   return colors[agentId] || '#64748b'
 }

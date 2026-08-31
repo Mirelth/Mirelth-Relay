@@ -40,3 +40,7 @@ API=https://api.cnb.cool/WeiGuangXunTu/AgentTower
 3. **验证**：`GET $API/-/releases/tags/<tag>` 比对资产名与字节数；公开直链格式
    `https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/<tag>/<文件名>`（匿名 302 到 CDN，可直接发给别人）。
 4. 更新 README「下载」区（链接文件名含版本号，每次发版都要改）。
+5. **必须：上传 `latest.json`**（应用内"检查更新"功能依赖它）。以 `release/latest.json` 为模板，把
+   `version` 改成新版本号、`notes` 写更新说明、`publishedAt` 写日期、`downloads` 三个直链换成新 tag，
+   然后按步骤 2 的三步法作为资产上传。**每个 Release 都要带这个文件**——`/-/releases/latest/download/latest.json`
+   是稳定公开链接，永远解析到"最新 Release"的该资产。忘传的后果：应用内检查更新会提示"版本源请求失败"。

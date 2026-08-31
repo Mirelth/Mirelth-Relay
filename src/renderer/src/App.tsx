@@ -8,6 +8,7 @@ import GitCommits from './pages/GitCommits'
 import Tokens from './pages/Tokens'
 import Models from './pages/Models'
 import Hooks from './pages/Hooks'
+import Security from './pages/Security'
 
 function App(): React.JSX.Element {
   return (
@@ -22,6 +23,7 @@ function App(): React.JSX.Element {
           <Route path="/tokens" element={<Tokens />} />
           <Route path="/models" element={<Models />} />
           <Route path="/hooks" element={<Hooks />} />
+          <Route path="/security" element={<Security />} />
         </Route>
       </Routes>
     </HashRouter>

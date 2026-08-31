@@ -8,7 +8,8 @@ const meta: ScannerMeta = {
   name: 'ycli',
   kind: 'cli',
   color: '#64748b',
-  probes: [join(HOME, '.ycli')]
+  probes: [join(HOME, '.ycli')],
+  installBins: ['ycli']
 }
 
 export const ycliScanner: Scanner = {

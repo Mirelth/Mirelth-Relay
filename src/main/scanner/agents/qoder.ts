@@ -1,7 +1,7 @@
 import { join, basename } from 'path'
 import type { ConfigFileInfo, DataDirInfo } from '@shared/types'
 import { HOME, dirSize, exists, isDir, listDirs, readAppBundleVersion, readJson, redact } from '../../lib/fs'
-import { emptySnapshot, type Scanner, type ScannerMeta } from '../types'
+import { appPaths, emptySnapshot, type Scanner, type ScannerMeta } from '../types'
 
 const meta: ScannerMeta = {
   id: 'qoder',
@@ -9,7 +9,8 @@ const meta: ScannerMeta = {
   vendor: 'Alibaba',
   kind: 'ide',
   color: '#f59e0b',
-  probes: [join(HOME, '.qoder'), '/Applications/Qoder.app']
+  probes: [join(HOME, '.qoder'), '/Applications/Qoder.app'],
+  installProbes: appPaths('Qoder.app')
 }
 
 interface InstalledPlugins {

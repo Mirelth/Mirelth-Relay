@@ -82,9 +82,17 @@ const TARGETS: TargetDef[] = [
     note: '技能由插件体系管理'
   },
   {
-    agentId: 'dsh',
-    agentName: 'DSH',
+    agentId: 'dsh-web',
+    agentName: 'DSH Web',
     color: '#8b5cf6',
+    skillsDir: '',
+    verified: false,
+    note: '使用 agent-presets 预设体系，格式不同'
+  },
+  {
+    agentId: 'dsh-desktop',
+    agentName: 'DSH Desktop',
+    color: '#a78bfa',
     skillsDir: '',
     verified: false,
     note: '使用 agent-presets 预设体系，格式不同'

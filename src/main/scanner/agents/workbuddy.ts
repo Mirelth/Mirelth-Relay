@@ -2,7 +2,7 @@ import { join } from 'path'
 import type { ConfigFileInfo, DataDirInfo } from '@shared/types'
 import type { UsageRecord } from '../types'
 import { HOME, dirSize, exists, readAppBundleVersion, readJson, readText, redact } from '../../lib/fs'
-import { emptySnapshot, skillsFromDir, type Scanner, type ScannerMeta } from '../types'
+import { appPaths, emptySnapshot, skillsFromDir, type Scanner, type ScannerMeta } from '../types'
 import Database from 'better-sqlite3'
 
 const meta: ScannerMeta = {
@@ -11,7 +11,8 @@ const meta: ScannerMeta = {
   vendor: 'Tencent',
   kind: 'desktop',
   color: '#10b981',
-  probes: [join(HOME, '.workbuddy'), '/Applications/WorkBuddy.app']
+  probes: [join(HOME, '.workbuddy'), '/Applications/WorkBuddy.app'],
+  installProbes: appPaths('WorkBuddy.app')
 }
 
 export const workbuddyScanner: Scanner = {

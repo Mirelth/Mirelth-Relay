@@ -24,7 +24,7 @@ export class CacheStore {
         name text, vendor text, version text, kind text,
         detected integer, skill_count integer, mcp_count integer,
         has_usage integer, project_count integer, color text,
-        detail_json text
+        detail_json text, install_state text not null default 'unknown'
       );
       create table if not exists skills (
         id text primary key, agent_id text, name text, version text,
@@ -47,6 +47,12 @@ export class CacheStore {
       create table if not exists projects (agent_id text, path text);
       create table if not exists scan_log (agent_id text, at integer, ok integer, error text);
     `)
+    // 旧库升级：agents 表补 install_state 列（重复执行报 duplicate column，忽略）
+    try {
+      this.db.exec(`alter table agents add column install_state text not null default 'unknown'`)
+    } catch {
+      /* 列已存在 */
+    }
   }
 
   /** 用一次扫描的快照替换对应 agent 的全部缓存 */
@@ -61,8 +67,8 @@ export class CacheStore {
 
       this.db
         .prepare(
-          `insert into agents (id, name, vendor, version, kind, detected, skill_count, mcp_count, has_usage, project_count, color, detail_json)
-           values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          `insert into agents (id, name, vendor, version, kind, detected, skill_count, mcp_count, has_usage, project_count, color, detail_json, install_state)
+           values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           info.id,
@@ -80,7 +86,8 @@ export class CacheStore {
             configs: snap.configs,
             dataDirs: snap.dataDirs,
             projectDirs: snap.projectDirs
-          })
+          }),
+          info.installState || 'unknown'
         )
 
       const insSkill = this.db.prepare(
@@ -89,8 +96,14 @@ export class CacheStore {
       )
       for (const s of snap.skills) {
         insSkill.run(
-          s.id, s.agentId, s.name, s.version || null, s.description || null,
-          s.installedAt || null, s.source, s.builtin ? 1 : 0
+          s.id,
+          s.agentId,
+          s.name,
+          s.version || null,
+          s.description || null,
+          s.installedAt || null,
+          s.source,
+          s.builtin ? 1 : 0
         )
       }
 
@@ -119,9 +132,16 @@ export class CacheStore {
       )
       for (const u of snap.usage) {
         insUsage.run(
-          snap.info.id, Math.floor(u.ts), u.model,
-          u.inputTokens, u.outputTokens, u.cacheReadTokens, u.cacheWriteTokens,
-          u.reasoningTokens, u.requests, u.costUsd ?? null
+          snap.info.id,
+          Math.floor(u.ts),
+          u.model,
+          u.inputTokens,
+          u.outputTokens,
+          u.cacheReadTokens,
+          u.cacheWriteTokens,
+          u.reasoningTokens,
+          u.requests,
+          u.costUsd ?? null
         )
       }
 
@@ -140,16 +160,23 @@ export class CacheStore {
   }
 
   /** MCP 健康检查结果回写 */
-  updateMcpStatus(id: string, status: string, statusDetail: string | null, tools: { name: string; description?: string }[]): void {
+  updateMcpStatus(
+    id: string,
+    status: string,
+    statusDetail: string | null,
+    tools: { name: string; description?: string }[]
+  ): void {
     this.db
-      .prepare('update mcp set status = ?, status_detail = ?, tools_json = ?, last_checked = ? where id = ?')
+      .prepare(
+        'update mcp set status = ?, status_detail = ?, tools_json = ?, last_checked = ? where id = ?'
+      )
       .run(status, statusDetail, JSON.stringify(tools), new Date().toISOString(), id)
   }
 
   listAgents(): AgentInfo[] {
     const rows = this.db
       .prepare(
-        `select id, name, vendor, version, kind, detected, skill_count, mcp_count, has_usage, project_count, color
+        `select id, name, vendor, version, kind, detected, skill_count, mcp_count, has_usage, project_count, color, install_state
          from agents order by detected desc, skill_count + mcp_count desc, name`
       )
       .all() as Record<string, unknown>[]
@@ -160,6 +187,7 @@ export class CacheStore {
       version: (r.version as string) || undefined,
       kind: r.kind as AgentInfo['kind'],
       detected: r.detected === 1,
+      installState: (r.install_state as AgentInfo['installState']) || 'unknown',
       skillCount: r.skill_count as number,
       mcpCount: r.mcp_count as number,
       hasUsage: r.has_usage === 1,
@@ -170,8 +198,7 @@ export class CacheStore {
 
   getAgentDetail(id: string): AgentDetail | null {
     const row = this.db.prepare('select detail_json from agents where id = ?').get(id) as
-      | { detail_json: string }
-      | undefined
+      { detail_json: string } | undefined
     if (!row) return null
     const parsed = JSON.parse(row.detail_json) as {
       configs: AgentDetail['configs']
@@ -246,7 +273,13 @@ export class CacheStore {
   }
 
   /** token 用量原始记录（明细表用） */
-  tokenRecords(filter: { model?: string; agentId?: string; since?: number; until?: number; limit?: number }): TokenRecord[] {
+  tokenRecords(filter: {
+    model?: string
+    agentId?: string
+    since?: number
+    until?: number
+    limit?: number
+  }): TokenRecord[] {
     const conds: string[] = []
     const params: unknown[] = []
     if (filter.model) {
@@ -287,7 +320,10 @@ export class CacheStore {
   }
 
   /** 按维度聚合 token 用量（返回数据库原始字段名） */
-  tokenAggregate(dimension: 'agent' | 'model' | 'day', filter: { model?: string; agentId?: string; since?: number; until?: number }): {
+  tokenAggregate(
+    dimension: 'agent' | 'model' | 'day',
+    filter: { model?: string; agentId?: string; since?: number; until?: number }
+  ): {
     key: string
     input_tokens: number
     output_tokens: number
@@ -299,7 +335,11 @@ export class CacheStore {
     cost: number
   }[] {
     const groupExpr =
-      dimension === 'agent' ? 'agent_id' : dimension === 'model' ? 'model' : "date(ts/1000, 'unixepoch', 'localtime')"
+      dimension === 'agent'
+        ? 'agent_id'
+        : dimension === 'model'
+          ? 'model'
+          : "date(ts/1000, 'unixepoch', 'localtime')"
     const conds: string[] = []
     const params: unknown[] = []
     if (filter.model) {
@@ -344,6 +384,74 @@ export class CacheStore {
     }[]
   }
 
+  /** 按维度 × 模型双键聚合（成本估算用：同一天/同一智能体下不同模型单价不同） */
+  tokenAggregateByModel(
+    dimension: 'agent' | 'model' | 'day',
+    filter: { model?: string; agentId?: string; since?: number; until?: number }
+  ): {
+    key: string
+    model: string
+    input_tokens: number
+    output_tokens: number
+    cache_read: number
+    cache_write: number
+    reasoning: number
+    total_tokens: number
+    requests: number
+    cost: number
+  }[] {
+    const groupExpr =
+      dimension === 'agent'
+        ? 'agent_id'
+        : dimension === 'model'
+          ? 'model'
+          : "date(ts/1000, 'unixepoch', 'localtime')"
+    const conds: string[] = []
+    const params: unknown[] = []
+    if (filter.model) {
+      conds.push('model = ?')
+      params.push(filter.model)
+    }
+    if (filter.agentId) {
+      conds.push('agent_id = ?')
+      params.push(filter.agentId)
+    }
+    if (filter.since != null) {
+      conds.push('ts >= ?')
+      params.push(filter.since)
+    }
+    if (filter.until != null) {
+      conds.push('ts <= ?')
+      params.push(filter.until)
+    }
+    const where = conds.length ? `where ${conds.join(' and ')}` : ''
+    return this.db
+      .prepare(
+        `select ${groupExpr} as key, model,
+                sum(input_tokens) input_tokens, sum(output_tokens) output_tokens,
+                sum(cache_read) cache_read, sum(cache_write) cache_write,
+                sum(reasoning) reasoning,
+                sum(input_tokens + output_tokens + cache_read + cache_write + reasoning) total_tokens,
+                sum(requests) requests, sum(ifnull(cost,0)) cost
+         from usage ${where}
+         group by ${groupExpr}, model`
+      )
+      .all(...params) as ReturnType<CacheStore['tokenAggregateByModel']>
+  }
+
+  /** 删除不在给定 id 列表内的智能体及其派生数据（适配器拆分/改名后清理陈旧行） */
+  deleteAgentsExcept(ids: string[]): number {
+    if (ids.length === 0) return 0
+    const placeholders = ids.map(() => '?').join(',')
+    const info = this.db.prepare(`delete from agents where id not in (${placeholders})`).run(...ids)
+    this.db.prepare(`delete from skills where agent_id not in (${placeholders})`).run(...ids)
+    this.db.prepare(`delete from mcp where agent_id not in (${placeholders})`).run(...ids)
+    this.db.prepare(`delete from usage where agent_id not in (${placeholders})`).run(...ids)
+    this.db.prepare(`delete from projects where agent_id not in (${placeholders})`).run(...ids)
+    this.db.prepare(`delete from scan_log where agent_id not in (${placeholders})`).run(...ids)
+    return info.changes
+  }
+
   /** 全部项目目录及其来源智能体 */
   projectRepos(): { path: string; agentIds: string[] }[] {
     const rows = this.db.prepare('select agent_id, path from projects').all() as {
@@ -371,12 +479,19 @@ export class CacheStore {
     const start7d = startOfToday - 6 * 86400_000
     const sum = (sql: string, ...params: unknown[]): number =>
       (this.db.prepare(sql).get(...params) as { t: number | null } | undefined)?.t ?? 0
-    const todayTokens = sum(`select sum(input_tokens + output_tokens + cache_read + cache_write + reasoning) t from usage where ts >= ?`, startOfToday)
+    const todayTokens = sum(
+      `select sum(input_tokens + output_tokens + cache_read + cache_write + reasoning) t from usage where ts >= ?`,
+      startOfToday
+    )
     const yesterdayTokens = sum(
       `select sum(input_tokens + output_tokens + cache_read + cache_write + reasoning) t from usage where ts >= ? and ts < ?`,
-      startOfYesterday, startOfToday
+      startOfYesterday,
+      startOfToday
     )
-    const last7dTokens = sum(`select sum(input_tokens + output_tokens + cache_read + cache_write + reasoning) t from usage where ts >= ?`, start7d)
+    const last7dTokens = sum(
+      `select sum(input_tokens + output_tokens + cache_read + cache_write + reasoning) t from usage where ts >= ?`,
+      start7d
+    )
     const topAgents = (
       this.db
         .prepare(
@@ -396,10 +511,21 @@ export class CacheStore {
     return { todayTokens, yesterdayTokens, last7dTokens, topAgents, topModels }
   }
 
-  counts(): { agents: number; skills: number; mcp: number; mcpOnline: number; mcpOffline: number; repos: number } {
+  counts(): {
+    agents: number
+    installedAgents: number
+    residualAgents: number
+    skills: number
+    mcp: number
+    mcpOnline: number
+    mcpOffline: number
+    repos: number
+  } {
     const one = (sql: string): number => (this.db.prepare(sql).get() as { c: number }).c
     return {
       agents: one(`select count(*) c from agents where detected = 1`),
+      installedAgents: one(`select count(*) c from agents where detected = 1 and install_state = 'installed'`),
+      residualAgents: one(`select count(*) c from agents where detected = 1 and install_state = 'residual'`),
       skills: one(`select count(*) c from skills`),
       mcp: one(`select count(*) c from mcp`),
       mcpOnline: one(`select count(*) c from mcp where status = 'online'`),
@@ -409,7 +535,8 @@ export class CacheStore {
   }
 
   metaGet(key: string): string | null {
-    const row = this.db.prepare('select value from meta where key = ?').get(key) as { value: string } | undefined
+    const row = this.db.prepare('select value from meta where key = ?').get(key) as
+      { value: string } | undefined
     return row?.value ?? null
   }
 
@@ -423,7 +550,7 @@ let store: CacheStore | null = null
 export function getStore(): CacheStore {
   if (!store) {
     // 延迟 import 避免 app 未就绪
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+
     const { app } = require('electron') as typeof import('electron')
     store = new CacheStore(join(app.getPath('userData'), 'cache.sqlite'))
   }

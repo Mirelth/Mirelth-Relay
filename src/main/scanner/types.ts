@@ -1,5 +1,5 @@
 import { basename, join } from 'path'
-import { listDirs, mtimeIso, parseSkillMd } from '../lib/fs'
+import { HOME, exists, listDirs, mtimeIso, parseSkillMd, resolveBin } from '../lib/fs'
 import type {
   AgentInfo,
   ConfigFileInfo,
@@ -7,6 +7,34 @@ import type {
   McpServer,
   SkillInfo
 } from '@shared/types'
+
+/** macOS 应用包候选路径（系统级 + 用户级） */
+export function appPaths(...names: string[]): string[] {
+  return names.flatMap((n) => [join('/Applications', n), join(HOME, 'Applications', n)])
+}
+
+export type InstallState = AgentInfo['installState']
+
+/**
+ * 纯函数：安装状态判定。
+ * hasEvidence=false（该智能体没有可验证的程序位置）→ unknown；
+ * programFound（应用包/可执行文件存在）→ installed；
+ * 程序不在但有数据 → residual（已卸载的配置/用量残留）。
+ */
+export function computeInstallState(o: { hasEvidence: boolean; programFound: boolean; dataFound: boolean }): InstallState {
+  if (!o.hasEvidence) return 'unknown'
+  if (o.programFound) return 'installed'
+  return o.dataFound ? 'residual' : 'unknown'
+}
+
+/** 从 meta 声明的本体证据判定安装状态（engine 集中调用） */
+export function detectInstallState(meta: ScannerMeta, dataFound: boolean): InstallState {
+  const probes = [...(meta.installProbes || []), ...(meta.installProbeResolver?.() || [])]
+  const bins = meta.installBins || []
+  const hasEvidence = probes.length > 0 || bins.length > 0
+  const programFound = probes.some((p) => exists(p)) || bins.some((b) => resolveBin(b) != null)
+  return computeInstallState({ hasEvidence, programFound, dataFound })
+}
 
 /** 原始 MCP 条目（扫描产物，健康检查前 status 未定） */
 export interface RawMcp {
@@ -50,6 +78,12 @@ export interface ScannerMeta {
   color: string
   /** 探测存在性的候选路径（~ 已展开） */
   probes: string[]
+  /** 程序本体证据路径（应用包等）：任一存在即判定"已安装"。缺省且无 installBins 时状态为"未确认" */
+  installProbes?: string[]
+  /** 程序本体证据：CLI 命令名，在 PATH 与常见安装目录解析 */
+  installBins?: string[]
+  /** 运行时计算的本体证据（如可移动卷上的 app 搜索），每次扫描求值一次 */
+  installProbeResolver?: () => string[]
 }
 
 export interface Scanner {
@@ -70,6 +104,7 @@ export function emptySnapshot(meta: ScannerMeta, detected: boolean): AgentSnapsh
       vendor: meta.vendor,
       kind: meta.kind,
       detected,
+      installState: 'unknown',
       skillCount: 0,
       mcpCount: 0,
       hasUsage: false,

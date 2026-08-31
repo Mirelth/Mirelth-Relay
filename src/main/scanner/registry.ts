@@ -3,7 +3,7 @@ import { traeScanner } from './agents/trae'
 import { qoderScanner } from './agents/qoder'
 import { codebuddyScanner } from './agents/codebuddy'
 import { workbuddyScanner } from './agents/workbuddy'
-import { dshScanner } from './agents/dsh'
+import { dshWebScanner, dshDesktopScanner } from './agents/dsh'
 import { opencodeScanner, loomyScanner } from './agents/opencode'
 import { agnesScanner } from './agents/agnes'
 import { ycliScanner } from './agents/ycli'
@@ -18,7 +18,8 @@ export const scanners: Scanner[] = [
   qoderScanner,
   codebuddyScanner,
   workbuddyScanner,
-  dshScanner,
+  dshWebScanner,
+  dshDesktopScanner,
   opencodeScanner,
   loomyScanner,
   agnesScanner,

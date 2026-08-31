@@ -2,7 +2,7 @@ import { join } from 'path'
 import type { DataDirInfo } from '@shared/types'
 import type { UsageRecord } from '../types'
 import { HOME, dirSize, exists, readAppBundleVersion, readYaml, redact } from '../../lib/fs'
-import { emptySnapshot, type Scanner, type ScannerMeta } from '../types'
+import { appPaths, emptySnapshot, type Scanner, type ScannerMeta } from '../types'
 import Database from 'better-sqlite3'
 
 const meta: ScannerMeta = {
@@ -11,7 +11,8 @@ const meta: ScannerMeta = {
   vendor: 'Agnes',
   kind: 'desktop',
   color: '#ec4899',
-  probes: [join(HOME, '.agnes'), '/Applications/AgnesCode.app']
+  probes: [join(HOME, '.agnes'), '/Applications/AgnesCode.app'],
+  installProbes: appPaths('AgnesCode.app')
 }
 
 export const agnesScanner: Scanner = {

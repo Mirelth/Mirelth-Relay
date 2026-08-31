@@ -2,7 +2,7 @@ import { join } from 'path'
 import type { ConfigFileInfo, DataDirInfo } from '@shared/types'
 import type { UsageRecord } from '../types'
 import { HOME, dirSize, exists, readJsonc } from '../../lib/fs'
-import { emptySnapshot, type Scanner, type ScannerMeta } from '../types'
+import { appPaths, emptySnapshot, type Scanner, type ScannerMeta } from '../types'
 import Database from 'better-sqlite3'
 
 /**
@@ -18,6 +18,8 @@ export function createOpencodeFamilyScanner(opts: {
   configPath: string
   dataDir: string
   configAppDir?: string
+  installProbes?: string[]
+  installBins?: string[]
 }): Scanner {
   const meta: ScannerMeta = {
     id: opts.id,
@@ -25,7 +27,9 @@ export function createOpencodeFamilyScanner(opts: {
     vendor: opts.vendor,
     kind: 'desktop',
     color: opts.color,
-    probes: [opts.configPath, opts.dataDir]
+    probes: [opts.configPath, opts.dataDir],
+    installProbes: opts.installProbes,
+    installBins: opts.installBins
   }
 
   return {
@@ -183,7 +187,10 @@ export const opencodeScanner: Scanner = createOpencodeFamilyScanner({
   color: '#f97316',
   configPath: join(HOME, '.config/opencode/opencode.jsonc'),
   dataDir: join(HOME, '.local/share/opencode'),
-  configAppDir: join(HOME, 'Library/Application Support/ai.opencode.desktop')
+  configAppDir: join(HOME, 'Library/Application Support/ai.opencode.desktop'),
+  // 已知本体位置：官方安装器写 ~/.opencode/bin/opencode，或 PATH 上的 opencode，或桌面 App
+  installBins: ['opencode'],
+  installProbes: [join(HOME, '.opencode/bin/opencode'), ...appPaths('OpenCode.app')]
 })
 
 export const loomyScanner: Scanner = createOpencodeFamilyScanner({

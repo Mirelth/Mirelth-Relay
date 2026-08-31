@@ -90,7 +90,10 @@ export default function Dashboard() {
       value: String(summary.agentCount),
       icon: Bot,
       color: '#6366f1',
-      sub: `${summary.skillCount} 个技能`
+      sub:
+        summary.residualAgents > 0
+          ? `${summary.installedAgents} 已安装 · ${summary.residualAgents} 残留`
+          : `${summary.skillCount} 个技能`
     },
     {
       label: 'MCP 服务',

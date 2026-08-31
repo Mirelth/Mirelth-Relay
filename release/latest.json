@@ -1,0 +1,10 @@
+{
+  "version": "1.0.0",
+  "notes": "首个公开版本：智能体/Skills/MCP 监控、Git 聚合、Token 统计、模型配置下发、Hooks 管理。",
+  "publishedAt": "2026-08-31",
+  "downloads": {
+    "macArm": "https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.0.0/agent-tower-1.0.0-arm64.dmg",
+    "macIntel": "https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.0.0/agent-tower-1.0.0-x64.dmg",
+    "win": "https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.0.0/agent-tower-1.0.0-setup.exe"
+  }
+}

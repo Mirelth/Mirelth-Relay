@@ -1,6 +1,7 @@
 import * as fs from 'fs'
 import { join } from 'path'
 import * as os from 'os'
+import { zstdDecompressSync } from 'zlib'
 import YAML from 'yaml'
 
 export const HOME = os.homedir()
@@ -103,6 +104,99 @@ export function dirSize(p: string, depth = 0): number {
   } catch {
     return -1
   }
+}
+
+/** CLI 智能体常见的非 PATH 安装目录（Electron 从 Finder 启动时 PATH 不含用户 shell 的补充路径） */
+export function binSearchDirs(): string[] {
+  const envPath = (process.env.PATH || '').split(':').filter(Boolean)
+  const extra = [
+    join(HOME, '.local/bin'),
+    join(HOME, 'go/bin'),
+    join(HOME, '.cargo/bin'),
+    join(HOME, '.npm-global/bin'),
+    join(HOME, '.bun/bin'),
+    join(HOME, '.volta/bin'),
+    join(HOME, 'bin'),
+    '/opt/homebrew/bin',
+    '/usr/local/bin'
+  ]
+  return [...envPath, ...extra]
+}
+
+/** 在 PATH 与常见安装目录中解析可执行文件，返回绝对路径或 null */
+export function resolveBin(name: string): string | null {
+  for (const dir of binSearchDirs()) {
+    try {
+      fs.accessSync(join(dir, name), fs.constants.X_OK)
+      return join(dir, name)
+    } catch {
+      /* 继续找下一个 */
+    }
+  }
+  return null
+}
+
+/**
+ * 在 /Volumes 下浅层（≤4 级）查找 .app 包。
+ * 有人把绿色分发的应用直接放在挂载卷里跑（不解到 /Applications），
+ * 静态 installProbes 覆盖不到，用运行时解析找。限制深度与宽度避免扫盘。
+ * 实测：典型 release 目录布局（volume/项目/release/平台目录/xxx.app）需要 4 级，约 390 节点。
+ */
+export function findAppOnVolumes(appName: string, maxDepth = 4): string | null {
+  let vols: string[] = []
+  try {
+    vols = fs.readdirSync('/Volumes').filter((v) => !v.startsWith('.'))
+  } catch {
+    return null
+  }
+  const stack: [string, number][] = vols.map((v) => [join('/Volumes', v), 0])
+  while (stack.length) {
+    const [p, d] = stack.pop() as [string, number]
+    if (p.endsWith('/' + appName)) {
+      try {
+        if (fs.statSync(p).isDirectory()) return p
+      } catch {
+        /* 忽略 */
+      }
+      continue
+    }
+    if (d >= maxDepth) continue
+    let entries: string[] = []
+    try {
+      entries = fs.readdirSync(p).filter((e) => !e.startsWith('.'))
+    } catch {
+      continue
+    }
+    for (const e of entries.slice(0, 150)) stack.push([join(p, e), d + 1])
+  }
+  return null
+}
+
+// ---------- zstd 多帧解压 ----------
+
+const ZSTD_MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd])
+
+/**
+ * 解压可能含多个 zstd 帧的 buffer。
+ * 追加式日志每写一段压一帧（CLI zstd -dc 能自动连解），
+ * 但 Node 的 zlib.zstdDecompressSync 只解第一帧——
+ * 按 magic 边界切帧逐帧解压再拼接，才能拿到全部内容。
+ */
+export function decompressZstdFrames(buf: Buffer): string {
+  if (typeof zstdDecompressSync !== 'function') return ''
+  const offsets: number[] = []
+  for (let i = buf.indexOf(ZSTD_MAGIC); i !== -1; i = buf.indexOf(ZSTD_MAGIC, i + 1)) offsets.push(i)
+  if (offsets.length === 0) return ''
+  let out = ''
+  for (let k = 0; k < offsets.length; k++) {
+    const end = k + 1 < offsets.length ? offsets[k + 1] : buf.length
+    try {
+      out += zstdDecompressSync(buf.subarray(offsets[k], end)).toString('utf8')
+    } catch {
+      /* 单帧损坏跳过 */
+    }
+  }
+  return out
 }
 
 /** 深拷贝并脱敏：值里疑似 key/token/secret 的字段替换为掩码 */

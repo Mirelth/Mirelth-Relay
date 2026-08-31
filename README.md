@@ -19,21 +19,31 @@
 | 模块 | 说明 |
 |---|---|
 | 仪表盘 | 智能体/Skills/MCP/Token 总览卡片，14 天消耗趋势，智能体消耗排行，模型分布 |
-| 智能体 | 卡片网格展示所有检测到的智能体（名称/厂商/版本/类型），点击查看配置摘要（凭据自动脱敏）、数据目录及大小、关联项目 |
+| 智能体 | 卡片网格展示所有检测到的智能体（名称/厂商/版本/类型），点击查看配置摘要（凭据自动脱敏）、数据目录及大小、关联项目。基于程序本体证据（应用包/可执行文件）标注安装状态：**已安装 / 已卸载·配置残留 / 状态未知**，可按状态筛选——已卸载智能体的历史消耗仍计入统计，不会悄悄消失也不会冒充在用 |
 | Skills | 跨智能体技能汇总表：名称/所属智能体/版本/描述/安装时间，支持搜索与按智能体筛选 |
 | MCP 服务 | 按智能体分组，连接状态徽标（在线/离线/未验证/禁用），工具列表，一键检测全部连接（HTTP 型 MCP 走 JSON-RPC 探测并拉取工具清单） |
 | Git 提交 | 聚合各智能体关联项目的 git log，按智能体/项目/时间范围/关键字筛选，行展开查看逐文件变更统计 |
 | Token 统计 | 按天/按智能体/按模型三个维度，趋势折线图 + 堆叠柱状图 + 模型占比环形图，支持下钻单模型明细 |
 | 模型配置 | 维护模型供应商 Profile（协议类型/Base URL/API Key/模型列表），一键下发到支持自动配置的智能体，写入前自动备份原配置 |
 | Hooks | 查看/新建/删除各智能体 settings 中的 hooks（事件触发命令），写入前自动备份 |
+| 安全体检 | 只读扫描智能体配置与常见凭证文件：明文密钥（脱敏展示）、文件权限过宽、密钥位于 shell rc/云同步目录等风险，给出处理建议 |
+| 成本估算 | 内置主流模型参考单价（每百万 token，厂商公开标价近似值，可编辑），按天/智能体/模型维度估算人民币成本；智能体上报真实成本时优先采用 |
+| 数据导出 | Token 统计、Git 提交列表一键导出 CSV（UTF-8 BOM，Excel 中文不乱码） |
+| 检查更新 | 启动与手动触发拉取发行版 `latest.json`，新版本顶栏高亮提示，弹窗内直接下载对应平台安装包，支持忽略某版本 |
 
 顶部支持手动刷新（全量重扫）与自动刷新（30 秒/1 分钟/5 分钟），顶栏可切换**亮色/暗色主题**（记忆上次选择）。扫描结果落本地缓存库（`userData/cache.sqlite`），界面读取全部走缓存。
 
+**托盘常驻**：关闭窗口即隐藏到系统托盘（托盘菜单：显示窗口/重新扫描/检查更新/通知开关/退出）。扫描后 MCP 由在线转离线、或发现新安装的智能体时弹系统通知，可在托盘菜单关闭。
+
 ## 已适配的智能体
 
-ZCode、Trae CN（字节）、Qoder（阿里）、CodeBuddy（腾讯）、WorkBuddy（腾讯）、DSH（DeepSeek）、OpenCode、Loomy OpenCode（讯飞）、AgnesCode、ycli、Hub，以及通用探测位：Claude Code、Codex CLI、Gemini CLI、Cursor（装了即自动显示）。
+ZCode、Trae CN（字节）、Qoder（阿里）、CodeBuddy（腾讯）、WorkBuddy（腾讯）、DSH Web 与 DSH Desktop（DeepSeek，两种分发形态独立统计）、OpenCode、Loomy OpenCode（讯飞）、AgnesCode、ycli、Hub，以及通用探测位：Claude Code、Codex CLI、Gemini CLI、Cursor（装了即自动显示）。
 
 每个智能体是一个独立适配器，能力不完全时自动降级（如无用量数据则该维度留空）。
+
+### 安装状态判定
+
+适配器可选声明 `installProbes`（应用包/本体路径）、`installBins`（PATH 上的命令名，含 `~/.local/bin`、`~/go/bin`、`~/.cargo/bin` 等常见目录）与 `installProbeResolver`（运行时计算，如绿色分发的 app 在 `/Volumes` 浅层搜索）。扫描后引擎统一判定：**本体在 = 已安装**；**本体不在但有配置数据 = 已卸载·配置残留**；**未声明本体位置（如 DSH Web、Hub 等无可靠标准位置的工具）= 状态未知**，宁缺毋滥不误报。
 
 ### 模型自动配置支持情况
 
@@ -43,7 +53,8 @@ ZCode、Trae CN（字节）、Qoder（阿里）、CodeBuddy（腾讯）、WorkBu
 | OpenCode | ✅ 完整 | `~/.config/opencode/opencode.jsonc` 的 `provider` + `model` |
 | Loomy OpenCode | ✅ 完整 | `~/.config/loomy-opencode/opencode.json` 的 `provider` + `model`/`small_model` |
 | ycli | ✅ 完整 | `~/.ycli/config.yaml`（单供应商，整体替换 provider/model/api_key/base_url） |
-| DSH | ⚠️ 部分 | `~/.dsh/settings.yaml` 的 `llm-pi-ai.providers`；API key 走环境变量（`AGENTMGR_<ID>_API_KEY`），写入后需自行设置并重启 DSH |
+| DSH Web | ⚠️ 部分 | `~/.dsh/settings.yaml` 的 `llm-pi-ai.providers`；API key 走环境变量（`AGENTMGR_<ID>_API_KEY`），写入后需自行设置并重启生效 |
+| DSH Desktop | ⚠️ 部分 | `~/.dsh-desktop/settings.yaml`，同上（两实体独立下发） |
 | 其余 | ❌ | CodeBuddy / Trae / Qoder / WorkBuddy / Agnes 的模型配置存在应用内部数据库或账号体系，无法安全写入，页面中只读展示 |
 
 所有写入均先备份原文件为 `<配置路径>.agentmgr-bak-<时间戳>`，写后回读校验 JSON/YAML 可解析。
@@ -83,13 +94,17 @@ src/
 │   ├── mcp-health.ts        # MCP 连通性探测（HTTP JSON-RPC / stdio 命令检查）
 │   ├── models/              # 模型配置：Profile 存储（store.ts）+ 各智能体写入器（appliers.ts）
 │   ├── hooks.ts             # Hooks 管理：读写各智能体 settings 的 hooks 键
+│   ├── pricing.ts           # 成本估算：内置单价表 + 用户覆盖（userData/model-pricing.json）+ 行级成本计算
+│   ├── updater.ts           # 检查更新：拉取发行版 latest.json 资产并版本比较
+│   ├── security.ts          # 安全体检：明文密钥/文件权限扫描（只读，输出脱敏）
+│   ├── alerts.ts            # 托盘 + 系统通知：MCP 掉线/新智能体基线对比
 │   ├── gitlog.ts            # git 聚合（simple-git）：列表用 --shortstat，展开才拉 --numstat
 │   └── ipc.ts               # IPC handlers（contextIsolation + preload 白名单）
 └── renderer/src/            # 渲染进程（React）
-    ├── components/Layout.tsx  # 侧边导航 + 顶栏刷新控制 + RefreshContext
+    ├── components/Layout.tsx  # 侧边导航 + 顶栏刷新控制 + 更新徽标/弹窗 + RefreshContext
     ├── components/Theme.tsx   # 亮/暗主题：ThemeProvider + 图表调色板（canvas 无法用 CSS 变量）
     ├── components/Chart.tsx   # ECharts 封装（自适应尺寸、随主题重绘）
-    └── pages/                 # Dashboard / Agents / Skills / Mcp / GitCommits / Tokens / Models / Hooks
+    └── pages/                 # Dashboard / Agents / Skills / Mcp / GitCommits / Tokens / Models / Hooks / Security
 ```
 
 数据流：`Scanner.scan() → AgentSnapshot → CacheStore.saveSnapshot() → IPC → React 页面`。

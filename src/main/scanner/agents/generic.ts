@@ -1,7 +1,7 @@
 import { join } from 'path'
 import type { ConfigFileInfo, DataDirInfo, McpTool } from '@shared/types'
 import { HOME, dirSize, exists, listDirs, readJson, redact } from '../../lib/fs'
-import { emptySnapshot, skillsFromDir, type RawMcp, type Scanner, type ScannerMeta } from '../types'
+import { appPaths, emptySnapshot, skillsFromDir, type RawMcp, type Scanner, type ScannerMeta } from '../types'
 
 /**
  * 通用探测：Claude Code / Codex CLI / Gemini CLI / Cursor。
@@ -20,6 +20,8 @@ interface GenericDef {
   skillsDirs: string[]
   mcpJsonPaths: { path: string; root?: string }[]
   projectDirs?: string[]
+  installProbes?: string[]
+  installBins?: string[]
 }
 
 const DEFS: GenericDef[] = [
@@ -30,6 +32,7 @@ const DEFS: GenericDef[] = [
     kind: 'cli',
     color: '#d97706',
     probes: [join(HOME, '.claude'), join(HOME, '.claude.json')],
+    installBins: ['claude'],
     configPaths: [join(HOME, '.claude.json'), join(HOME, '.claude/settings.json')],
     dataDirs: [
       [join(HOME, '.claude/projects'), '会话记录'],
@@ -47,6 +50,7 @@ const DEFS: GenericDef[] = [
     kind: 'cli',
     color: '#22c55e',
     probes: [join(HOME, '.codex')],
+    installBins: ['codex'],
     configPaths: [join(HOME, '.codex/config.toml')],
     dataDirs: [
       [join(HOME, '.codex/sessions'), '会话记录'],
@@ -63,6 +67,7 @@ const DEFS: GenericDef[] = [
     kind: 'cli',
     color: '#0ea5e9',
     probes: [join(HOME, '.gemini')],
+    installBins: ['gemini'],
     configPaths: [join(HOME, '.gemini/settings.json')],
     dataDirs: [[join(HOME, '.gemini'), '数据目录']],
     skillsDirs: [],
@@ -76,6 +81,8 @@ const DEFS: GenericDef[] = [
     kind: 'ide',
     color: '#a3a3a3',
     probes: [join(HOME, '.cursor'), join(HOME, 'Library/Application Support/Cursor')],
+    installProbes: appPaths('Cursor.app'),
+    installBins: ['cursor'],
     configPaths: [join(HOME, '.cursor/mcp.json')],
     dataDirs: [
       [join(HOME, '.cursor/extensions'), '扩展'],
@@ -101,7 +108,9 @@ export function createGenericScanner(def: GenericDef): Scanner {
     vendor: def.vendor,
     kind: def.kind,
     color: def.color,
-    probes: def.probes
+    probes: def.probes,
+    installProbes: def.installProbes,
+    installBins: def.installBins
   }
   return {
     meta,

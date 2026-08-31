@@ -1,7 +1,7 @@
 import { join } from 'path'
 import type { ConfigFileInfo, DataDirInfo } from '@shared/types'
 import { HOME, dirSize, exists, listDirs, mtimeIso, parseSkillMd, readJson, redact } from '../../lib/fs'
-import { emptySnapshot, makeSkillId, type Scanner, type ScannerMeta } from '../types'
+import { appPaths, emptySnapshot, makeSkillId, type Scanner, type ScannerMeta } from '../types'
 
 const meta: ScannerMeta = {
   id: 'codebuddy',
@@ -9,7 +9,8 @@ const meta: ScannerMeta = {
   vendor: 'Tencent',
   kind: 'ide',
   color: '#3b82f6',
-  probes: [join(HOME, '.codebuddy'), join(HOME, '.codebuddycn')]
+  probes: [join(HOME, '.codebuddy'), join(HOME, '.codebuddycn')],
+  installProbes: appPaths('CodeBuddy CN.app', 'CodeBuddy.app')
 }
 
 export const codebuddyScanner: Scanner = {

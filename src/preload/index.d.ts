@@ -6,5 +6,6 @@ declare global {
     electron: ElectronAPI
     api: ApiClient
     onScanCompleted: (cb: () => void) => () => void
+    onUpdaterOpen: (cb: () => void) => () => void
   }
 }

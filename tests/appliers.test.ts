@@ -120,10 +120,52 @@ describe('ycli yaml applier', () => {
   })
 })
 
+describe('dsh-web / dsh-desktop appliers', () => {
+  it('两实体各写各的 settings.yaml，互不影响', async () => {
+    seed('.dsh/settings.yaml', 'ui-onboarding:\n  welcomeNoticeVersion: 1\n')
+    seed('.dsh-desktop/settings.yaml', 'ui-onboarding:\n  welcomeNoticeVersion: 2\n')
+    const res = mod.applyProfile(profile, ['dsh-web', 'dsh-desktop'], opts)
+    expect(res[0].ok && res[1].ok).toBe(true)
+    const YAML = await import('yaml')
+    const web = YAML.parse(readFileSync(rel('.dsh/settings.yaml'), 'utf8'))
+    const desk = YAML.parse(readFileSync(rel('.dsh-desktop/settings.yaml'), 'utf8'))
+    expect(web['llm-pi-ai'].providers.demo.baseURL).toBe('https://demo.local/v1')
+    expect(web.uiOnboarding ?? web['ui-onboarding']).toBeTruthy()
+    expect(desk['llm-pi-ai'].providers.demo.baseURL).toBe('https://demo.local/v1')
+    // web 写入不应污染 desktop 的原有值，反之亦然
+    expect(desk['ui-onboarding'].welcomeNoticeVersion).toBe(2)
+    expect(res[0].message).toMatch(/AGENTMGR_DEMO_API_KEY/)
+  })
+
+  it('setDefault 只写目标实体', async () => {
+    seed('.dsh/settings.yaml', 'keep: true\n')
+    seed('.dsh-desktop/settings.yaml', 'keep: true\n')
+    const withDefault = { ...profile, defaultModel: 'demo-1' }
+    mod.applyProfile(withDefault, ['dsh-desktop'], { setDefault: true })
+    const YAML = await import('yaml')
+    const desk = YAML.parse(readFileSync(rel('.dsh-desktop/settings.yaml'), 'utf8'))
+    const web = YAML.parse(readFileSync(rel('.dsh/settings.yaml'), 'utf8'))
+    expect(desk['agent-default-model']).toEqual({ provider: 'demo', model: 'demo-1' })
+    expect(web['agent-default-model']).toBeUndefined()
+  })
+
+  it('配置不存在 → 不凭空新建', () => {
+    rmSync(rel('.dsh/settings.yaml'), { force: true })
+    const res = mod.applyProfile(profile, ['dsh-web'], opts)
+    expect(res[0].ok).toBe(false)
+    expect(res[0].message).toMatch(/未检测到配置文件/)
+  })
+})
+
 describe('listAppliers 探测', () => {
   it('未安装的智能体 support=none 并给出提示', () => {
-    const dsh = mod.listAppliers().find((a) => a.agentId === 'dsh')
-    expect(dsh?.support).toBe('none')
-    expect(dsh?.note).toMatch(/未检测到/)
+    // DSH 已拆为 dsh-web / dsh-desktop 两实体；清掉前序用例留下的配置再探测
+    rmSync(rel('.dsh/settings.yaml'), { force: true })
+    rmSync(rel('.dsh-desktop/settings.yaml'), { force: true })
+    for (const id of ['dsh-web', 'dsh-desktop']) {
+      const a = mod.listAppliers().find((x) => x.agentId === id)
+      expect(a?.support, id).toBe('none')
+      expect(a?.note, id).toMatch(/未检测到/)
+    }
   })
 })

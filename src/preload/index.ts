@@ -20,13 +20,24 @@ const api: ApiClient = {
   saveModelProfile: (profile) => ipcRenderer.invoke('models:save', profile),
   deleteModelProfile: (id) => ipcRenderer.invoke('models:delete', id),
   listAppliers: () => ipcRenderer.invoke('models:appliers'),
-  applyModelProfile: (profileId, agentIds, options) => ipcRenderer.invoke('models:apply', profileId, agentIds, options),
+  applyModelProfile: (profileId, agentIds, options) =>
+    ipcRenderer.invoke('models:apply', profileId, agentIds, options),
   listHooks: () => ipcRenderer.invoke('hooks:list'),
   listHookTargets: () => ipcRenderer.invoke('hooks:targets'),
   createHook: (input) => ipcRenderer.invoke('hooks:create', input),
   deleteHook: (hookId) => ipcRenderer.invoke('hooks:delete', hookId),
   listSkillCopyTargets: () => ipcRenderer.invoke('skills:copyTargets'),
-  copySkill: (skillId, agentIds, overwrite) => ipcRenderer.invoke('skills:copy', skillId, agentIds, overwrite)
+  copySkill: (skillId, agentIds, overwrite) =>
+    ipcRenderer.invoke('skills:copy', skillId, agentIds, overwrite),
+  checkUpdate: () => ipcRenderer.invoke('update:check'),
+  getPricing: () => ipcRenderer.invoke('pricing:get'),
+  savePricing: (config) => ipcRenderer.invoke('pricing:save', config),
+  resetPricing: () => ipcRenderer.invoke('pricing:reset'),
+  securityScan: () => ipcRenderer.invoke('security:scan'),
+  exportSave: (options) => ipcRenderer.invoke('io:export', options),
+  settingGet: (key) => ipcRenderer.invoke('settings:get', key),
+  settingSet: (key, value) => ipcRenderer.invoke('settings:set', key, value),
+  openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url)
 }
 
 /** 扫描完成事件订阅 */
@@ -36,11 +47,19 @@ export function onScanCompleted(cb: () => void): () => void {
   return () => ipcRenderer.removeListener('scan:completed', listener)
 }
 
+/** 托盘"检查更新"事件订阅 */
+export function onUpdaterOpen(cb: () => void): () => void {
+  const listener = (): void => cb()
+  ipcRenderer.on('updater:open', listener)
+  return () => ipcRenderer.removeListener('updater:open', listener)
+}
+
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electron', electronAPI)
     contextBridge.exposeInMainWorld('api', api)
     contextBridge.exposeInMainWorld('onScanCompleted', onScanCompleted)
+    contextBridge.exposeInMainWorld('onUpdaterOpen', onUpdaterOpen)
   } catch (error) {
     console.error(error)
   }
@@ -49,4 +68,6 @@ if (process.contextIsolated) {
   window.electron = electronAPI
   // @ts-ignore (define in dts)
   window.api = api
+  // @ts-ignore (define in dts)
+  window.onUpdaterOpen = onUpdaterOpen
 }

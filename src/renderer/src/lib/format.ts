@@ -28,6 +28,16 @@ export function formatDateOnly(iso?: string): string {
   return d.toLocaleDateString('zh-CN')
 }
 
+/** 金额显示（人民币）：大额用万，小额保底 3 位小数 */
+export function formatMoneyCny(n: number): string {
+  if (!isFinite(n) || n === 0) return '¥0'
+  const abs = Math.abs(n)
+  if (abs >= 10000) return '¥' + (n / 10000).toFixed(2) + '万'
+  if (abs >= 100) return '¥' + n.toFixed(1)
+  if (abs >= 1) return '¥' + n.toFixed(2)
+  return '¥' + n.toFixed(3)
+}
+
 export function relativeTime(iso?: string): string {
   if (!iso) return '—'
   const d = new Date(iso)

@@ -1,7 +1,7 @@
 import { join } from 'path'
 import type { ConfigFileInfo, DataDirInfo } from '@shared/types'
 import { HOME, dirSize, exists, listEntries, mtimeIso, readAppBundleVersion, readJson, redact } from '../../lib/fs'
-import { emptySnapshot, makeSkillId, type Scanner, type ScannerMeta } from '../types'
+import { appPaths, emptySnapshot, makeSkillId, type Scanner, type ScannerMeta } from '../types'
 
 const meta: ScannerMeta = {
   id: 'trae-cn',
@@ -9,7 +9,8 @@ const meta: ScannerMeta = {
   vendor: 'ByteDance',
   kind: 'ide',
   color: '#ef4444',
-  probes: [join(HOME, '.trae-cn'), '/Applications/Trae CN.app']
+  probes: [join(HOME, '.trae-cn'), '/Applications/Trae CN.app'],
+  installProbes: appPaths('Trae CN.app')
 }
 
 interface SkillMd {

@@ -11,7 +11,7 @@ import {
   readJson,
   redact
 } from '../../lib/fs'
-import { emptySnapshot, makeSkillId, type Scanner, type ScannerMeta } from '../types'
+import { appPaths, emptySnapshot, makeSkillId, type Scanner, type ScannerMeta } from '../types'
 import Database from 'better-sqlite3'
 
 const meta: ScannerMeta = {
@@ -20,7 +20,8 @@ const meta: ScannerMeta = {
   vendor: 'Zhipu AI',
   kind: 'desktop',
   color: '#6366f1',
-  probes: [join(HOME, '.zcode'), '/Applications/ZCode.app']
+  probes: [join(HOME, '.zcode'), '/Applications/ZCode.app'],
+  installProbes: appPaths('ZCode.app')
 }
 
 function skillsFromPluginCache(snap: ReturnType<typeof emptySnapshot>): void {
