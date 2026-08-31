@@ -2,6 +2,17 @@
 
 跨平台桌面工具，统一监控和管理电脑上已安装的 AI 编码智能体：检测安装状态、汇总 Skills、监控 MCP 服务、聚合 Git 提交、统计 Token 消耗。基于 **Electron 39 + electron-vite + React 19 + TypeScript + Tailwind 4 + ECharts**。
 
+## 下载
+
+最新发布：**v1.0.0**（[发行版页面](https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases)）
+
+| 平台 | 安装包 |
+|---|---|
+| macOS（Apple Silicon） | [agent-tower-1.0.0.dmg](https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.0.0/agent-tower-1.0.0.dmg) |
+| Windows 10/11（x64） | [agent-tower-1.0.0-setup.exe](https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.0.0/agent-tower-1.0.0-setup.exe) |
+
+> 安装包未做代码签名：macOS 首次打开如遇拦截，右键 App 选「打开」或执行 `xattr -cr /Applications/AgentTower.app`；Windows 如遇 SmartScreen 提示，点「更多信息 → 仍要执行」。
+
 ## 功能
 
 | 模块 | 说明 |
