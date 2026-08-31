@@ -1,47 +1,66 @@
 <svg width="1024" height="1024" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#4f46e5"/>
-      <stop offset="0.55" stop-color="#6366f1"/>
-      <stop offset="1" stop-color="#8b5cf6"/>
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="0.62" stop-color="#1e1b4b"/>
+      <stop offset="1" stop-color="#312e81"/>
     </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.55" r="0.55">
+      <stop offset="0" stop-color="#38bdf8" stop-opacity="0.26"/>
+      <stop offset="1" stop-color="#38bdf8" stop-opacity="0"/>
+    </radialGradient>
     <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.18"/>
-      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.14"/>
+      <stop offset="0.45" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7dd3fc"/>
+      <stop offset="1" stop-color="#0e7490"/>
+    </linearGradient>
+    <linearGradient id="stem" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#cbd5e1"/>
+      <stop offset="0.45" stop-color="#f8fafc"/>
+      <stop offset="1" stop-color="#94a3b8"/>
+    </linearGradient>
+    <linearGradient id="roof" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f1f5f9"/>
+      <stop offset="1" stop-color="#cbd5e1"/>
     </linearGradient>
   </defs>
 
-  <!-- macOS squircle 底板 -->
-  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)"/>
-  <rect x="100" y="100" width="824" height="412" rx="185" fill="url(#sheen)"/>
+  <!-- 底板 -->
+  <rect x="96" y="96" width="832" height="832" rx="190" fill="url(#bg)"/>
+  <circle cx="512" cy="560" r="360" fill="url(#glow)"/>
+  <rect x="96" y="96" width="832" height="416" rx="190" fill="url(#sheen)"/>
 
-  <!-- 机器人天线 -->
-  <rect x="497" y="252" width="30" height="72" rx="15" fill="#e0e7ff"/>
-  <circle cx="512" cy="234" r="30" fill="#a5f3fc"/>
+  <!-- 雷达信号弧（以塔顶信标为圆心） -->
+  <path d="M 319.7 269 A 222 222 0 0 1 704.3 269" stroke="#818cf8" stroke-opacity="0.7" stroke-width="22" fill="none" stroke-linecap="round"/>
+  <path d="M 373.4 300 A 160 160 0 0 1 650.6 300" stroke="#38bdf8" stroke-opacity="0.85" stroke-width="24" fill="none" stroke-linecap="round"/>
+  <path d="M 429.7 332.5 A 95 95 0 0 1 594.3 332.5" stroke="#22d3ee" stroke-width="26" fill="none" stroke-linecap="round"/>
 
-  <!-- 机器人头部 -->
-  <rect x="312" y="316" width="400" height="296" rx="84" fill="#ffffff"/>
-  <!-- 耳侧模块 -->
-  <rect x="272" y="416" width="52" height="96" rx="26" fill="#c7d2fe"/>
-  <rect x="700" y="416" width="52" height="96" rx="26" fill="#c7d2fe"/>
+  <!-- 弧端智能体节点 -->
+  <circle cx="319.7" cy="269" r="17" fill="#e0f2fe"/>
+  <circle cx="704.3" cy="269" r="17" fill="#e0f2fe"/>
 
-  <!-- 眼睛 -->
-  <circle cx="428" cy="452" r="40" fill="#312e81"/>
-  <circle cx="596" cy="452" r="40" fill="#312e81"/>
-  <circle cx="441" cy="439" r="13" fill="#ffffff"/>
-  <circle cx="609" cy="439" r="13" fill="#ffffff"/>
+  <!-- 信标 + 天线杆 -->
+  <circle cx="512" cy="380" r="34" fill="#f0f9ff"/>
+  <circle cx="512" cy="380" r="17" fill="#06b6d4"/>
+  <rect x="500" y="404" width="24" height="36" rx="10" fill="#cbd5e1"/>
 
-  <!-- 嘴部指示灯条 -->
-  <rect x="392" y="530" width="240" height="26" rx="13" fill="#c7d2fe"/>
+  <!-- 塔冠（瞭望舱顶棚） -->
+  <path d="M 362 438 L 662 438 L 630 488 L 394 488 Z" fill="url(#roof)"/>
+  <!-- 玻璃瞭望舱 -->
+  <path d="M 394 488 L 630 488 L 606 592 L 418 592 Z" fill="url(#glass)"/>
+  <line x1="456" y1="490" x2="467.5" y2="590" stroke="#0e7490" stroke-opacity="0.5" stroke-width="9"/>
+  <line x1="512" y1="490" x2="512" y2="590" stroke="#0e7490" stroke-opacity="0.5" stroke-width="9"/>
+  <line x1="568" y1="490" x2="556.5" y2="590" stroke="#0e7490" stroke-opacity="0.5" stroke-width="9"/>
 
-  <!-- 监控脉搏线 -->
-  <path d="M 262 726 H 372 L 416 646 L 474 792 L 528 668 L 566 726 H 762"
-        stroke="#a5f3fc" stroke-width="30" fill="none"
-        stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- 塔身 -->
+  <path d="M 418 592 L 606 592 L 622 802 L 402 802 Z" fill="url(#stem)"/>
+  <!-- 竖窗缝 -->
+  <path d="M 505 616 L 519 616 L 522 782 L 502 782 Z" fill="#334155" fill-opacity="0.4"/>
 
-  <!-- 四个智能体节点 -->
-  <circle cx="242" cy="330" r="22" fill="#a5f3fc" opacity="0.9"/>
-  <circle cx="782" cy="330" r="22" fill="#a5f3fc" opacity="0.9"/>
-  <circle cx="242" cy="812" r="22" fill="#c4b5fd" opacity="0.9"/>
-  <circle cx="782" cy="812" r="22" fill="#c4b5fd" opacity="0.9"/>
+  <!-- 塔座与地面投影 -->
+  <rect x="344" y="798" width="336" height="58" rx="29" fill="#e2e8f0"/>
+  <ellipse cx="512" cy="888" rx="204" ry="20" fill="#020617" fill-opacity="0.35"/>
 </svg>
