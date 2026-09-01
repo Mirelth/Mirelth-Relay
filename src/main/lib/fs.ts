@@ -199,6 +199,34 @@ export function decompressZstdFrames(buf: Buffer): string {
   return out
 }
 
+/**
+ * 用 zstd CLI 解压整个文件（多帧自动连解）。
+ * Electron 内置 Node 的 zstdDecompressSync 对某些帧会触发原生断言直接杀死进程
+ * （2026-08-31 实测：DSH 会话文件导致 CrBrowserMain EXC_BREAKPOINT），
+ * 子进程解压失败只是返回空串，进程安全。
+ */
+export function decompressZstdFile(filePath: string): string {
+  const candidates = [resolveBin('zstd'), join(HOME, 'opt/python/bin/zstd'), '/opt/homebrew/bin/zstd', '/usr/local/bin/zstd'].filter(
+    (p): p is string => !!p
+  )
+  for (const bin of candidates) {
+    try {
+      const { execFileSync } = require('child_process') as typeof import('child_process')
+      const out = execFileSync(bin, ['-dc', filePath], {
+        encoding: 'buffer',
+        maxBuffer: 512 * 1024 * 1024,
+        timeout: 60_000
+      })
+      return out.toString('utf8')
+    } catch (err) {
+      // ENOENT = 该路径没有 zstd，换下一个；其余（解压失败/超时）视为文件问题，返回空串
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') continue
+      return ''
+    }
+  }
+  return ''
+}
+
 /** 深拷贝并脱敏：值里疑似 key/token/secret 的字段替换为掩码 */
 const SENSITIVE_KEY = /key|token|secret|password|credential|authorization|api[-_]?key/i
 const SENSITIVE_VALUE = /^(sk|ghp|gho|xox|eyJ)[\w-]{12,}/

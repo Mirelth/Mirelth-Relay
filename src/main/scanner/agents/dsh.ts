@@ -1,8 +1,8 @@
-import { readdirSync, readFileSync } from 'fs'
+import { readdirSync } from 'fs'
 import { join } from 'path'
 import type { DataDirInfo } from '@shared/types'
 import type { UsageRecord } from '../types'
-import { HOME, decompressZstdFrames, dirSize, exists, findAppOnVolumes, isDir, listDirs, readYaml, redact } from '../../lib/fs'
+import { HOME, decompressZstdFile, dirSize, exists, findAppOnVolumes, isDir, listDirs, readYaml, redact } from '../../lib/fs'
 import { appPaths, emptySnapshot, type Scanner, type ScannerMeta } from '../types'
 
 /**
@@ -74,7 +74,7 @@ function scanDshSessions(sessionsDir: string, cap = 2000): { usage: UsageRecord[
       const f = join(sess, 'session.jsonl.zstd')
       if (!exists(f) || files++ >= cap) continue
       try {
-        const parsed = parseDshSessionLines(decompressZstdFrames(readFileSync(f)))
+        const parsed = parseDshSessionLines(decompressZstdFile(f))
         usage.push(...parsed.usage)
         if (parsed.cwd) projectDirs.add(parsed.cwd)
       } catch (err) {
