@@ -70,6 +70,9 @@ main:
               script: npm test
 
   # tag 触发：只跑 Linux 公开 runner（CNB 没有 mac/win 公开 runner）
+  # 用 `$:` 而不是 `main:` —— tag 名是 v1.1.1，main: 不会匹配
+  # `$:` 是 CNB 的通配符，匹配所有分支和所有 tag 名
+$:
   tag_push:
     - name: build-linux
       runner:
