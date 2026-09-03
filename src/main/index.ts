@@ -3,10 +3,14 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { registerIpc } from './ipc'
-import { refreshAndRecord } from './engine'
+import { refreshAndRecord, refreshAll } from './engine'
 import { checkAllMcp } from './mcp-health'
 import { getStore } from './cache'
+import { copySkill, listSkillCopyTargets } from './skills-copy'
 import * as alerts from './alerts'
+import { logger, installProcessHandlers } from './lib/logger'
+
+installProcessHandlers()
 
 let mainWindow: BrowserWindow | null = null
 
@@ -99,7 +103,7 @@ app.whenReady().then(() => {
   })
 
   // 首次启动后台执行一次全量扫描，扫描完成后通知渲染进程
-  void runFullRefresh().catch((err) => console.error('initial scan failed:', err))
+  void runFullRefresh().catch((err) => logger.error('startup', 'initial scan failed', err))
 
   // 调试用：AGENTMGR_SHOT=<目录> 时自动扫描截图各页面后退出（供自动化验证）
   const shotDir = process.env.AGENTMGR_SHOT
@@ -277,21 +281,18 @@ app.whenReady().then(() => {
   if (copyTestOut) {
     void (async () => {
       await new Promise((r) => setTimeout(r, 8000))
-      const skillsCopy = await import('./skills-copy')
-      const { getStore } = await import('./cache')
-      const fsMod = await import('fs')
-      const targets = skillsCopy.listSkillCopyTargets()
+      const fsMod = require('fs') as typeof import('fs')
+      const targets = listSkillCopyTargets()
       const source = getStore()
         .listSkills()
         .find((s) => s.agentId === 'zcode' && s.source && fsMod.existsSync(s.source))
-      const results = source ? await skillsCopy.copySkill(source.id, ['hub']) : []
+      const results = source ? await copySkill(source.id, ['hub']) : []
       // 清理：删掉拷贝产物并重扫恢复缓存
       let cleaned = false
       const dest = results[0]?.message.match(/已复制到 (.+)$/)?.[1]
       if (dest && fsMod.existsSync(dest)) {
         fsMod.rmSync(dest, { recursive: true, force: true })
         cleaned = true
-        const { refreshAll } = await import('./engine')
         await refreshAll('hub')
       }
       require('fs').writeFileSync(

@@ -1,10 +1,10 @@
 {
-  "version": "1.1.0",
-  "notes": "新增：检查更新、成本估算、安全体检、托盘告警、CSV 导出、安装状态检测；修复 DSH 会话 zstd 解压导致的崩溃。",
-  "publishedAt": "2026-09-01",
+  "version": "1.1.1",
+  "notes": "v1.1.1 收口批次：\n\n- 引入 i18next 框架（Layout/导航/自动刷新/更新弹窗中英双语化）\n- 主进程结构化日志（logger.ts）+ 进程级兜底（unhandledRejection/uncaughtException）\n- 扫描器测试覆盖（21 个新单测，含 opencode/qoder/codebuddy/trae/agnes/dsh/types）\n- UI 快照回归测试（Layout 侧边栏 4 个用例守住 chrome）\n- 代码签名占位（electron-builder.yml 留好 CSC_LINK / Apple ID 注入点）\n- CI tag_push 三平台（mac/win/linux）并行打包，本地签名 + release 流程",
+  "publishedAt": "2026-09-03",
   "downloads": {
-    "macArm": "https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.1.0/agent-tower-1.1.0-arm64.dmg",
-    "macIntel": "https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.1.0/agent-tower-1.1.0-x64.dmg",
-    "win": "https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.1.0/agent-tower-1.1.0-setup.exe"
+    "macArm": "https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.1.1/agent-tower-1.1.1-arm64.dmg",
+    "macIntel": "https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.1.1/agent-tower-1.1.1-x64.dmg",
+    "win": "https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.1.1/agent-tower-1.1.1-setup.exe"
   }
 }

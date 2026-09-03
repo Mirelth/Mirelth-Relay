@@ -5,8 +5,11 @@
     "src/main/**/*",
     "src/preload/**/*",
     "src/shared/**/*",
-    "tests/**/*",
+    "tests/**/*.ts",
     "vitest.config.*"
+  ],
+  "exclude": [
+    "tests/**/*.tsx"
   ],
   "compilerOptions": {
     "composite": true,

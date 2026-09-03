@@ -1,6 +1,7 @@
 import { app, Menu, Notification, Tray, nativeImage } from 'electron'
 import type { CacheStore } from './cache'
 import type { UpdateInfo } from '@shared/types'
+import { logger } from './lib/logger'
 
 /**
  * 托盘常驻 + 事件通知：
@@ -69,7 +70,7 @@ function notify(title: string, body: string): void {
     n.on('click', () => focusHandler())
     n.show()
   } catch (err) {
-    console.warn('notification failed:', err)
+    logger.warn('alerts', 'notification failed', err)
   }
 }
 

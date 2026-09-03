@@ -1,6 +1,7 @@
 import { scanners } from './scanner/registry'
 import { detectInstallState } from './scanner/types'
 import { getStore } from './cache'
+import { logger } from './lib/logger'
 
 export interface RefreshResult {
   ok: boolean
@@ -26,7 +27,7 @@ export async function refreshAll(agentIdFilter?: string): Promise<RefreshResult>
       console.log(`[scan] ${scanner.meta.id} saved (${Date.now() - start}ms since scan start)`)
       scanned.push(scanner.meta.id)
     } catch (err) {
-      console.error(`[scan] ${scanner.meta.id} failed: ${err instanceof Error ? err.stack || err.message : String(err)}`)
+      logger.error('scan', `${scanner.meta.id} failed`, err)
       errors.push(`${scanner.meta.id}: ${err instanceof Error ? err.message : String(err)}`)
     }
   }

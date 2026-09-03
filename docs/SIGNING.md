@@ -2,6 +2,23 @@
 
 当前所有发行包都是未签名的：macOS 会被 Gatekeeper 拦首次启动，Windows 会弹 SmartScreen 蓝屏警告。本文件说明拿到证书后如何启用签名，以及买哪种证书的决策依据。
 
+## 快速启用（拿到证书后照抄）
+
+```bash
+# macOS：钥匙串已导入 Developer ID Application 证书
+export APPLE_ID=you@example.com
+export APPLE_APP_SPECIFIC_PASSWORD=abcd-efgh-ijkl-mnop   # appleid.apple.com 生成
+export APPLE_TEAM_ID=ABCDE12345                           # Account → Membership
+npm run build:mac
+
+# Windows：把 .pfx 放 certs/agenttower.p12（已在 .gitignore）
+export CSC_LINK="file://$PWD/certs/agenttower.p12"
+export CSC_KEY_PASSWORD=证书密码
+npm run build:win
+```
+
+`electron-builder.yml` 已配好 `hardenedRuntime: true`（公证前置）与 `notarize: ${env.APPLE_ID}`（环境变量驱动，yml 不必改）。Windows 同样靠 CSC_LINK 触发，yml 里 `certificateFile` 仅作开发机本地签备选。完整流程与故障排查见下文。
+
 ## macOS：Apple Developer + 公证（路径唯一，决策简单）
 
 | 步骤 | 说明 |

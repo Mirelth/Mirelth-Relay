@@ -4,6 +4,7 @@ import type { UsageRecord } from '../types'
 import { HOME, dirSize, exists, readAppBundleVersion, readYaml, redact } from '../../lib/fs'
 import { appPaths, emptySnapshot, type Scanner, type ScannerMeta } from '../types'
 import Database from 'better-sqlite3'
+import { logger } from '../../lib/logger'
 
 const meta: ScannerMeta = {
   id: 'agnes',
@@ -99,8 +100,8 @@ export const agnesScanner: Scanner = {
         if (r.working_dir) snap.projectDirs.push(r.working_dir)
       }
       db.close()
-    } catch {
-      /* 忽略 */
+    } catch (err) {
+      logger.debug('agnes', 'sessions.db 不可读', err)
     }
     snap.projectDirs = [...new Set(snap.projectDirs)]
 

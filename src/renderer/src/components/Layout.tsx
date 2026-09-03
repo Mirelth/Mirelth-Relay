@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import {
   Activity,
   Bot,
@@ -35,28 +36,29 @@ export const RefreshContext = createContext<RefreshContextValue>({
 })
 export const useRefresh = (): RefreshContextValue => useContext(RefreshContext)
 
-const AUTO_INTERVALS = [
-  { label: '关闭', ms: 0 },
-  { label: '30 秒', ms: 30_000 },
-  { label: '1 分钟', ms: 60_000 },
-  { label: '5 分钟', ms: 300_000 }
+const AUTO_INTERVALS: { key: string; ms: number }[] = [
+  { key: 'common.autoOff', ms: 0 },
+  { key: 'common.auto30s', ms: 30_000 },
+  { key: 'common.auto1m', ms: 60_000 },
+  { key: 'common.auto5m', ms: 300_000 }
 ]
 
 const NAV = [
-  { to: '/', label: '仪表盘', icon: Activity },
-  { to: '/agents', label: '智能体', icon: Bot },
-  { to: '/skills', label: 'Skills', icon: Puzzle },
-  { to: '/mcp', label: 'MCP 服务', icon: Wrench },
-  { to: '/git', label: 'Git 提交', icon: GitCommitHorizontal },
-  { to: '/tokens', label: 'Token 统计', icon: Layers },
-  { to: '/models', label: '模型配置', icon: Cpu },
-  { to: '/hooks', label: 'Hooks', icon: Webhook },
-  { to: '/security', label: '安全体检', icon: ShieldCheck }
+  { to: '/', key: 'nav.dashboard', icon: Activity },
+  { to: '/agents', key: 'nav.agents', icon: Bot },
+  { to: '/skills', key: 'nav.skills', icon: Puzzle },
+  { to: '/mcp', key: 'nav.mcp', icon: Wrench },
+  { to: '/git', key: 'nav.git', icon: GitCommitHorizontal },
+  { to: '/tokens', key: 'nav.tokens', icon: Layers },
+  { to: '/models', key: 'nav.models', icon: Cpu },
+  { to: '/hooks', key: 'nav.hooks', icon: Webhook },
+  { to: '/security', key: 'nav.security', icon: ShieldCheck }
 ]
 
 const RELEASES_PAGE = 'https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases'
 
 export default function Layout() {
+  const { t } = useTranslation()
   const [refreshTick, setRefreshTick] = useState(0)
   const [refreshing, setRefreshing] = useState(false)
   const [lastScanAt, setLastScanAt] = useState<string | undefined>()
@@ -142,9 +144,9 @@ export default function Layout() {
                 <Bot size={18} />
               </div>
               <div>
-                <div className="text-sm font-semibold">AgentTower</div>
+                <div className="text-sm font-semibold">{t('brand.name')}</div>
                 <div className="text-xs" style={{ color: 'var(--muted)' }}>
-                  智能体塔台
+                  {t('brand.tagline')}
                 </div>
               </div>
             </div>
@@ -163,13 +165,13 @@ export default function Layout() {
                     }}
                   >
                     <Icon size={16} style={{ color: active ? 'var(--accent)' : 'inherit' }} />
-                    {item.label}
+                    {t(item.key)}
                   </button>
                 )
               })}
             </nav>
             <div className="px-4 py-3 text-xs" style={{ color: 'var(--muted)' }}>
-              上次扫描：{relativeTime(lastScanAt)}
+              {t('common.lastScan', { time: relativeTime(lastScanAt) })}
             </div>
           </aside>
 
@@ -179,12 +181,12 @@ export default function Layout() {
               className="flex h-14 shrink-0 items-center justify-between border-b px-6"
               style={{ borderColor: 'var(--border)', background: 'var(--panel)' }}
             >
-              <h1 className="text-base font-semibold">{current?.label || '仪表盘'}</h1>
+              <h1 className="text-base font-semibold">{current ? t(current.key) : t('nav.dashboard')}</h1>
               <div className="flex items-center gap-2">
                 <button
                   className="btn"
                   onClick={() => void runCheckUpdate(true)}
-                  title="检查更新"
+                  title={t('common.checkUpdate')}
                   style={
                     update?.hasUpdate
                       ? { borderColor: 'var(--accent)', color: 'var(--accent)', fontWeight: 600 }
@@ -192,9 +194,9 @@ export default function Layout() {
                   }
                 >
                   {update?.hasUpdate
-                    ? `可更新 v${update.latest}`
+                    ? t('common.updateAvailable', { version: update.latest })
                     : checking
-                      ? '检查中…'
+                      ? t('common.checking')
                       : `v${update?.current || '…'}`}
                   {update?.hasUpdate && (
                     <span
@@ -210,8 +212,8 @@ export default function Layout() {
                   onChange={(e) => setAutoIdx(Number(e.target.value))}
                 >
                   {AUTO_INTERVALS.map((it, i) => (
-                    <option key={it.label} value={i}>
-                      自动刷新：{it.label}
+                    <option key={it.key} value={i}>
+                      {t('common.autoRefresh', { label: t(it.key) })}
                     </option>
                   ))}
                 </select>
@@ -221,7 +223,7 @@ export default function Layout() {
                   disabled={refreshing}
                 >
                   <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
-                  {refreshing ? '扫描中…' : '立即刷新'}
+                  {refreshing ? t('common.scanning') : t('common.refreshNow')}
                 </button>
               </div>
             </header>
@@ -264,14 +266,16 @@ function UpdateModal({
   onRecheck: () => void
   onIgnore: () => void
 }): React.JSX.Element {
+  const { t, i18n } = useTranslation()
   const openExternal = (url?: string): void => {
     if (url) void window.api.openExternal(url)
   }
-  const downloads: { label: string; url?: string }[] = [
-    { label: 'macOS（Apple Silicon · .dmg）', url: info?.downloads?.macArm },
-    { label: 'macOS（Intel · .dmg）', url: info?.downloads?.macIntel },
-    { label: 'Windows 10/11（x64 · .exe）', url: info?.downloads?.win }
+  const downloads: { key: string; url?: string }[] = [
+    { key: 'update.downloads.macArm', url: info?.downloads?.macArm },
+    { key: 'update.downloads.macIntel', url: info?.downloads?.macIntel },
+    { key: 'update.downloads.win', url: info?.downloads?.win }
   ]
+  const dateLocale = i18n.language === 'zh-CN' ? 'zh-CN' : 'en-US'
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-6"
@@ -280,7 +284,7 @@ function UpdateModal({
     >
       <div className="card w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-base font-semibold">软件更新</h2>
+          <h2 className="text-base font-semibold">{t('update.modalTitle')}</h2>
           <button className="btn px-2 py-1" onClick={onClose}>
             <X size={14} />
           </button>
@@ -288,7 +292,7 @@ function UpdateModal({
 
         {checking && (
           <div className="py-6 text-center text-sm" style={{ color: 'var(--muted)' }}>
-            正在检查更新…
+            {t('update.checkingLong')}
           </div>
         )}
 
@@ -301,17 +305,19 @@ function UpdateModal({
               {info.error}
             </div>
             <div style={{ color: 'var(--muted)' }}>
-              当前版本 v{info.current}，可前往发行页手动查看新版本。
+              {t('update.fetchError', { current: info.current })}
             </div>
           </div>
         )}
 
         {!checking && !info?.error && info && !info.updateAvailable && (
           <div className="space-y-1 text-sm">
-            <div style={{ color: 'var(--ok)' }}>已是最新版本</div>
+            <div style={{ color: 'var(--ok)' }}>{t('update.upToDate')}</div>
             <div style={{ color: 'var(--muted)' }}>
-              当前版本 v{info.current}，检查于{' '}
-              {new Date(info.checkedAt).toLocaleString('zh-CN', { hour12: false })}
+              {t('update.upToDateDetail', {
+                current: info.current,
+                time: new Date(info.checkedAt).toLocaleString(dateLocale, { hour12: false })
+              })}
             </div>
           </div>
         )}
@@ -320,11 +326,15 @@ function UpdateModal({
           <div className="space-y-3 text-sm">
             <div>
               <span className="font-semibold" style={{ color: 'var(--accent)' }}>
-                发现新版本 v{info.latest}
+                {t('update.newVersionFound', { latest: info.latest })}
               </span>
               <span style={{ color: 'var(--muted)' }}>
-                （当前 v{info.current}
-                {info.publishedAt ? ` · ${info.publishedAt}` : ''}）
+                {t('update.currentWithDate', {
+                  current: info.current,
+                  date: info.publishedAt
+                    ? t('update.currentDateSep') + info.publishedAt
+                    : ''
+                })}
               </span>
             </div>
             {info.notes && (
@@ -340,16 +350,16 @@ function UpdateModal({
                 .filter((d) => d.url)
                 .map((d) => (
                   <button
-                    key={d.label}
+                    key={d.key}
                     className="btn w-full justify-center"
                     onClick={() => openExternal(d.url)}
                   >
-                    <Download size={13} /> 下载 {d.label}
+                    <Download size={13} /> {t('update.downloadLabel', { platform: t(d.key) })}
                   </button>
                 ))}
               {!info.hasUpdate && (
                 <div className="text-xs" style={{ color: 'var(--muted)' }}>
-                  你已选择忽略该版本，点击「不再忽略」恢复提醒。
+                  {t('update.ignoredHint')}
                 </div>
               )}
             </div>
@@ -358,12 +368,12 @@ function UpdateModal({
 
         <div className="mt-4 flex items-center justify-between">
           <button className="btn" onClick={() => openExternal(RELEASES_PAGE)}>
-            <ExternalLink size={13} /> 发行页
+            <ExternalLink size={13} /> {t('update.releasesPage')}
           </button>
           <div className="flex gap-2">
             {info?.updateAvailable && info.hasUpdate && (
               <button className="btn" onClick={onIgnore}>
-                忽略此版本
+                {t('update.ignoreThis')}
               </button>
             )}
             {info?.updateAvailable && !info.hasUpdate && (
@@ -373,11 +383,11 @@ function UpdateModal({
                   void window.api.settingSet('updateIgnoredVersion', '').then(onRecheck)
                 }}
               >
-                不再忽略
+                {t('update.unignore')}
               </button>
             )}
             <button className="btn btn-primary" onClick={onRecheck} disabled={checking}>
-              {checking ? '检查中…' : '重新检查'}
+              {checking ? t('common.checking') : t('update.recheck')}
             </button>
           </div>
         </div>
@@ -388,14 +398,15 @@ function UpdateModal({
 
 function ThemeToggle(): React.JSX.Element {
   const { theme, toggle } = useTheme()
+  const { t } = useTranslation()
   return (
     <button
       className="btn"
       onClick={toggle}
-      title={theme === 'dark' ? '切换到亮色主题' : '切换到暗色主题'}
+      title={theme === 'dark' ? t('theme.toLight') : t('theme.toDark')}
     >
       {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
-      {theme === 'dark' ? '亮色' : '暗色'}
+      {theme === 'dark' ? t('theme.light') : t('theme.dark')}
     </button>
   )
 }

@@ -7,6 +7,8 @@ import { formatDate } from '../lib/format'
 
 const RANGES = [
   { label: '全部时间', days: 0 },
+  { label: '当天', days: 1 },
+  { label: '最近 3 天', days: 3 },
   { label: '最近 7 天', days: 7 },
   { label: '最近 30 天', days: 30 },
   { label: '最近 90 天', days: 90 }

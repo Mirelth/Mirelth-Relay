@@ -1,0 +1,58 @@
+{
+  "brand": {
+    "name": "AgentTower",
+    "tagline": "Agent Control Tower"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "agents": "Agents",
+    "skills": "Skills",
+    "mcp": "MCP Servers",
+    "git": "Git Commits",
+    "tokens": "Token Usage",
+    "models": "Model Config",
+    "hooks": "Hooks",
+    "security": "Security"
+  },
+  "common": {
+    "loading": "Loading…",
+    "refreshNow": "Refresh Now",
+    "scanning": "Scanning…",
+    "lastScan": "Last scan: {{time}}",
+    "autoRefresh": "Auto refresh: {{label}}",
+    "autoOff": "Off",
+    "auto30s": "30s",
+    "auto1m": "1 min",
+    "auto5m": "5 min",
+    "checkUpdate": "Check for updates",
+    "checking": "Checking…",
+    "updateAvailable": "Update v{{version}}"
+  },
+  "theme": {
+    "light": "Light",
+    "dark": "Dark",
+    "toLight": "Switch to light theme",
+    "toDark": "Switch to dark theme"
+  },
+  "update": {
+    "modalTitle": "Software Update",
+    "checkingLong": "Checking for updates…",
+    "fetchError": "Current version v{{current}}. Visit the releases page to check manually.",
+    "upToDate": "You're up to date",
+    "upToDateDetail": "Current version v{{current}}, checked at {{time}}",
+    "newVersionFound": "New version v{{latest}} available",
+    "currentWithDate": "(current v{{current}}{{date}})",
+    "currentDateSep": " · ",
+    "ignoredHint": "You chose to ignore this version. Click \"Stop ignoring\" to be reminded again.",
+    "downloadLabel": "Download {{platform}}",
+    "releasesPage": "Releases",
+    "ignoreThis": "Ignore this version",
+    "unignore": "Stop ignoring",
+    "recheck": "Recheck",
+    "downloads": {
+      "macArm": "macOS (Apple Silicon · .dmg)",
+      "macIntel": "macOS (Intel · .dmg)",
+      "win": "Windows 10/11 (x64 · .exe)"
+    }
+  }
+}

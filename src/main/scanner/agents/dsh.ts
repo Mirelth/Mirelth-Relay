@@ -4,6 +4,7 @@ import type { DataDirInfo } from '@shared/types'
 import type { UsageRecord } from '../types'
 import { HOME, decompressZstdFile, dirSize, exists, findAppOnVolumes, isDir, listDirs, readYaml, redact } from '../../lib/fs'
 import { appPaths, emptySnapshot, type Scanner, type ScannerMeta } from '../types'
+import { logger } from '../../lib/logger'
 
 /**
  * DSH 家族扫描器。同一引擎有两种分发形态，数据目录不同，作为两个独立实体分别统计：
@@ -78,7 +79,7 @@ function scanDshSessions(sessionsDir: string, cap = 2000): { usage: UsageRecord[
         usage.push(...parsed.usage)
         if (parsed.cwd) projectDirs.add(parsed.cwd)
       } catch (err) {
-        console.warn(`[dsh] 会话解析失败 ${sess.split('/').pop()}: ${err instanceof Error ? err.message : err}`)
+        logger.warn('dsh', `会话解析失败 ${sess.split('/').pop()}`, err)
       }
     }
     console.log(`[dsh] proj done ${proj.split('/').pop()} ${Date.now() - t0}ms 累计files=${files}`)

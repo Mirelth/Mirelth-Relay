@@ -1,5 +1,15 @@
-# CNB 云原生构建流水线：类型检查 + 单元测试
-# 依赖安装用 --ignore-scripts 跳过 Electron 二进制下载等安装脚本（测试不需要打包链路）
+# CNB 云原生构建流水线
+# ============================================================
+# verify（push/PR/api）：node:22 跑 typecheck + test
+# tag_push 触发三平台（mac/win/linux）独立 pipeline 并行打包
+#   1) 各平台 build → cnbcool/attachments 上传产物到 release
+#   2) 开发者本地跑 scripts/release.sh 下载→签名→重传→标记 latest
+# 关键 CNB 环境变量（已对照官方文档）：
+#   CNB_BRANCH        — tag 名（tag_push 时）
+#   CNB_REPO_URL_HTTPS — 仓库 HTTPS 克隆地址
+#   CNB_BUILD_WORKSPACE — 工作目录路径
+# ============================================================
+
 main:
   push:
     - name: verify
@@ -31,7 +41,6 @@ main:
               script: npm run typecheck
             - name: test
               script: npm test
-  # API/手动触发（POST /-/build/start {"branch":"main","event":"api_trigger"}）
   api_trigger:
     - name: verify-manual
       docker:
@@ -47,3 +56,111 @@ main:
               script: npm run typecheck
             - name: test
               script: npm test
+
+  # tag 触发多平台构建：v1.2.3 格式
+  # 三平台并行跑，各自用对应 OS runner 打包后上传到同一个 release
+  tag_push:
+    - name: build-mac
+      runner:
+        image: macos-14
+      stages:
+        - name: checkout & install
+          jobs:
+            - name: install
+              script: |
+                git clone --depth 1 "$CNB_REPO_URL_HTTPS" "$CNB_BUILD_WORKSPACE"
+                cd "$CNB_BUILD_WORKSPACE"
+                npm ci --registry=https://registry.npmmirror.com
+        # 单次同时打 arm64+x64：latest-mac.yml 才能同时引用两个 arch 的 zip
+        - name: build
+          jobs:
+            - name: electron-builder
+              script: |
+                cd "$CNB_BUILD_WORKSPACE"
+                export ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
+                export ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/
+                npm run build
+                npx electron-builder --mac --arm64 --x64 --publish never
+        - name: create release
+          type: git:release
+          options:
+            title: $CNB_BRANCH
+            description: "由 CI 自动创建，稍后由开发者本地签名后正式发布"
+            latest: false   # 留到 scripts/release.sh 标记 latest
+        - name: upload
+          image: cnbcool/attachments:latest
+          settings:
+            tag: $CNB_BRANCH
+            attachments:
+              - "dist/agent-tower-*.dmg"
+              - "dist/latest-mac.yml"
+              - "dist/AgentTower-*-mac.zip"
+
+    - name: build-win
+      runner:
+        image: windows-2022
+      stages:
+        - name: checkout & install
+          jobs:
+            - name: install
+              script: |
+                git clone --depth 1 %CNB_REPO_URL_HTTPS% %CNB_BUILD_WORKSPACE%
+                cd /d %CNB_BUILD_WORKSPACE%
+                npm ci --registry=https://registry.npmmirror.com
+        - name: build
+          jobs:
+            - name: electron-builder
+              script: |
+                cd /d %CNB_BUILD_WORKSPACE%
+                set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
+                set ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/
+                call npm run build
+                call npx electron-builder --win --x64 --publish never
+        - name: create release
+          type: git:release
+          options:
+            title: $CNB_BRANCH
+            description: "由 CI 自动创建，稍后由开发者本地签名后正式发布"
+            latest: false
+        - name: upload
+          image: cnbcool/attachments:latest
+          settings:
+            tag: $CNB_BRANCH
+            attachments:
+              - "dist\\agent-tower-*-setup.exe"
+              - "dist\\latest.yml"
+
+    - name: build-linux
+      runner:
+        image: ubuntu-latest
+      stages:
+        - name: checkout & install
+          jobs:
+            - name: install
+              script: |
+                git clone --depth 1 "$CNB_REPO_URL_HTTPS" "$CNB_BUILD_WORKSPACE"
+                cd "$CNB_BUILD_WORKSPACE"
+                npm ci --registry=https://registry.npmmirror.com
+        - name: build
+          jobs:
+            - name: electron-builder
+              script: |
+                cd "$CNB_BUILD_WORKSPACE"
+                export ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
+                export ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/
+                npm run build
+                npx electron-builder --linux --publish never
+        - name: create release
+          type: git:release
+          options:
+            title: $CNB_BRANCH
+            description: "由 CI 自动创建，稍后由开发者本地签名后正式发布"
+            latest: false
+        - name: upload
+          image: cnbcool/attachments:latest
+          settings:
+            tag: $CNB_BRANCH
+            attachments:
+              - "dist/agent-tower-*.AppImage"
+              - "dist/agent-tower_*_amd64.deb"
+              - "dist/latest-linux.yml"

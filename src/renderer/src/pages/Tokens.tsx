@@ -20,6 +20,8 @@ const DIMENSIONS: { key: TokenDimension; label: string }[] = [
 ]
 
 const RANGES = [
+  { label: '当天', ms: 1 * 86400_000 },
+  { label: '最近 3 天', ms: 3 * 86400_000 },
   { label: '最近 7 天', ms: 7 * 86400_000 },
   { label: '最近 30 天', ms: 30 * 86400_000 },
   { label: '最近 90 天', ms: 90 * 86400_000 },
