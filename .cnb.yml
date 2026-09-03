@@ -82,10 +82,9 @@ $:
           jobs:
             - name: install
               script: |
-                # workspace 可能已存在（非空目录），先清掉再 clone
-                rm -rf "$CNB_BUILD_WORKSPACE"
-                git clone --depth 1 "$CNB_REPO_URL_HTTPS" "$CNB_BUILD_WORKSPACE"
-                cd "$CNB_BUILD_WORKSPACE"
+                # /workspace 是挂载点不能 rm，把仓库 clone 到子目录
+                git clone --depth 1 "$CNB_REPO_URL_HTTPS" "$CNB_BUILD_WORKSPACE/repo"
+                cd "$CNB_BUILD_WORKSPACE/repo"
                 npm ci --ignore-scripts --registry=https://registry.npmmirror.com
                 # 显式触发 electron 二进制下载（--ignore-scripts 跳过了 postinstall）
                 node node_modules/electron/install.js
@@ -93,7 +92,7 @@ $:
           jobs:
             - name: electron-builder
               script: |
-                cd "$CNB_BUILD_WORKSPACE"
+                cd "$CNB_BUILD_WORKSPACE/repo"
                 export ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
                 export ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/
                 npm run build
