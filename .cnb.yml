@@ -99,9 +99,10 @@ $:
                 export ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/
                 npm run build
                 npx electron-builder --linux --publish never
-                # 上传 stage (cnbcool/attachments) 默认扫 \$CNB_BUILD_WORKSPACE 根目录，
-                # 但产物在 \$CNB_BUILD_WORKSPACE/repo/dist —— 软链过去
-                ln -sfn "$CNB_BUILD_WORKSPACE/repo/dist" "$CNB_BUILD_WORKSPACE/dist"
+                # 上传 stage (cnbcool/attachments) 跑在独立 docker 容器里，扫 \$CNB_BUILD_WORKSPACE 根目录。
+                # 物理复制 dist 过去（软链跨容器可能不解析）
+                mkdir -p "$CNB_BUILD_WORKSPACE/dist"
+                cp -r "$CNB_BUILD_WORKSPACE/repo/dist/." "$CNB_BUILD_WORKSPACE/dist/"
         - name: create release
           type: git:release
           options:
