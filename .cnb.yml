@@ -82,6 +82,8 @@ $:
           jobs:
             - name: install
               script: |
+                # workspace 可能已存在（非空目录），先清掉再 clone
+                rm -rf "$CNB_BUILD_WORKSPACE"
                 git clone --depth 1 "$CNB_REPO_URL_HTTPS" "$CNB_BUILD_WORKSPACE"
                 cd "$CNB_BUILD_WORKSPACE"
                 npm ci --ignore-scripts --registry=https://registry.npmmirror.com
