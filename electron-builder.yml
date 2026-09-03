@@ -49,14 +49,14 @@ mac:
     - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
     - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
-  # 公证前置：hardenedRuntime 必须为 true，否则 notarytool 直接拒收
+  # hardenedRuntime: true 是 notarize 的前置（notarytool 不收未硬化 runtime）
   hardenedRuntime: true
   gatekeeperAssess: false
-  # 环境变量驱动：拿到 Apple ID 后只需 export 三个变量，yml 不必改
-  # APPLE_ID=you@example.com APPLE_APP_SPECIFIC_PASSWORD=xxxx APPLE_TEAM_ID=XXXXXXXXXX
-  # 用三元式强制 boolean —— 不然空环境变量下 schema 校验会爆
-  # 加引号避 YAML 解析 `?` 成 mapping indicator
-  notarize: "${env.APPLE_ID ? true : false}"
+  # 公证：默认关，拿到 Apple Developer ID 证书后改成 true
+  # 再 export APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID
+  # (electron-builder 26 schema 校验：notarize 必须是 boolean 字面量，
+  #  不能用 ${env.X} 因为校验跑在 env 展开之前)
+  notarize: false
 
 dmg:
   artifactName: ${name}-${version}-${arch}.${ext}
