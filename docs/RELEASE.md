@@ -7,20 +7,32 @@
 ```
 git tag v1.2.3 && git push --tags
        ↓
-CNB CI 并行跑 build-mac / build-win / build-linux
+CNB CI 只跑 build-linux（公开 runner 只有 Linux）
        ↓
-CI 自动创建 release v1.2.3（草稿）并上传未签名产物
+CI 自动创建 release v1.2.3（草稿）+ 上传 Linux 产物（AppImage/deb）
        ↓
-./scripts/release.sh v1.2.3
-   ├─ 下载 CI 产物到 ./dist/
-   ├─ 签名 macOS（钥匙串里有 Developer ID 时自动签）
-   ├─ 签名 Windows（certs/agenttower.p12 + signtool 在 PATH 时自动签）
-   ├─ 重新上传到 release（覆盖未签名版）
+开发者本地：
+  npm run build:mac   # 产出 2 个 dmg
+  npm run build:win   # 产出 1 个 setup.exe
+       ↓
+./scripts/release.sh v1.2.3 --from-local
+   ├─ 签名 macOS dmg（钥匙串里有 Developer ID 时自动签）
+   ├─ 签名 Windows exe（certs/agenttower.p12 + signtool 在 PATH 时自动签）
+   ├─ 重新上传到 release（覆盖未签名版 + 补齐 mac/win 产物）
    ├─ 上传 latest.json
    └─ 标记 release 为 latest
 ```
 
-签名在本地做（macOS 钥匙串里的 Developer ID 证书不能放到云端 CI），CI 只跑无签名的 `electron-builder --publish never`，把未签名产物上传到 release 等开发者本地签名后覆盖。
+### 为什么只有 Linux 走 CI
+
+CNB 公开 runner 只有 Linux（`cnb:arch:amd64` / `cnb:arch:arm64:v8`），macOS / Windows 没有公开 runner。
+要 mac/win 必须自建 runner（CI 厂商配置的 mac/win 物理机），本仓库未配置。
+所以 tag_push 阶段只跑 `build-linux`；mac/win 安装包由开发者本地 `npm run build:mac` / `build:win` 产出，再用 `scripts/release.sh --from-local` 上传。
+
+### 签名为什么在本地
+
+- macOS 钥匙串里的 Developer ID 证书不能放到云端 CI runner（安全要求 + Apple 政策）；
+- Windows 的 `.pfx/.p12` 虽然能 base64 编码塞 CI，但「先下载到本地再覆盖回 release」的设计不如一次本地签完更省时。
 
 ## 前置
 
@@ -32,7 +44,7 @@ CI 自动创建 release v1.2.3（草稿）并上传未签名产物
 
 ## 发布步骤
 
-### 1. 触发 CI 构建
+### 1. 触发 CI 构建（仅 Linux）
 
 ```bash
 # 先在 package.json 里把 version 改好
@@ -42,26 +54,41 @@ git tag v1.2.3
 git push origin main --follow-tags
 ```
 
-push tag 后，`.cnb.yml` 里的 `tag_push` 触发器并行启动三个 pipeline：
+push tag 后，`.cnb.yml` 里的 `tag_push` 只启动一个 pipeline：
 
-- **build-mac**（macos-14）：`npx electron-builder --mac --arm64 --x64 --publish never`，产出 2 个 dmg + latest-mac.yml
-- **build-win**（windows-2022）：`npx electron-builder --win --x64 --publish never`，产出 exe + latest.yml
-- **build-linux**（ubuntu-latest）：`npx electron-builder --linux --publish never`，产出 AppImage + deb
+- **build-linux**（runner.tags=`cnb:arch:amd64`）：`npx electron-builder --linux --publish never`，产出 AppImage + deb + latest-linux.yml
 
-每个 pipeline 用 `git:release`（`latest: false`，草稿态）创建 release，然后 `cnbcool/attachments` 上传自己平台的产物。三个 pipeline 都完成后，release 里就有了全平台未签名产物。
+pipeline 用 `git:release`（`latest: false`，草稿态）创建 release，然后 `cnbcool/attachments` 上传 Linux 产物。
 
-到 <https://cnb.cool/WeiGuangXunTu/AgentTower/-/builds> 等三个 pipeline 全绿。如果某个平台红了，先 fix 再重打 tag。
+到 <https://cnb.cool/WeiGuangXunTu/AgentTower/-/builds> 等 build-linux 全绿。红了先 fix 再重打 tag（`git tag -d v1.2.3 && git push origin :refs/tags/v1.2.3 && git tag v1.2.3 && git push --tags`）。
 
-### 2. 跑发布脚本
+### 2. 本地构建 mac/win 产物
 
 ```bash
-./scripts/release.sh v1.2.3
+# macOS（arm64 + x64）
+npm run build:mac
+# 产出：dist/agent-tower-1.2.3-arm64.dmg  +  agent-tower-1.2.3-x64.dmg  +  latest-mac.yml
+
+# Windows（x64）
+npm run build:win
+# 产出：dist/agent-tower-1.2.3-setup.exe  +  latest.yml
 ```
+
+如果只发 Linux，跳过这一步直接跑第 3 步的 release.sh（不带 `--from-local`，脚本会下载 CI 产物再签名——Linux 不签，只重传）。
+
+### 3. 跑发布脚本
+
+```bash
+# 签名 mac/win 并把本地 + CI 产物一起覆盖到 release
+./scripts/release.sh v1.2.3 --from-local
+```
+
+`--from-local` 表示不下载 CI 产物，直接用 `./dist/` 现有文件（本步第 2 步已产出的 dmg/exe + 第 1 步可能另外下载的 Linux 产物）。
 
 脚本做的事（详见 `scripts/release.sh`）：
 
 1. `GET /-/releases/tags/v1.2.3` 拿 RID
-2. 遍历 release 的 assets 列表，逐个 `GET /-/releases/download/v1.2.3/<filename>` 下载到 `./dist/`
+2. **（带 `--from-local` 时跳过下载）**遍历 release 的 assets 列表，逐个 `GET /-/releases/download/v1.2.3/<filename>` 下载到 `./dist/`
 3. 签名 macOS dmg（自动检测钥匙串里有没有 Developer ID Application 证书）
 4. 签名 Windows exe（如果 `certs/agenttower.p12` + signtool 都到位）
 5. 准备 `./dist/latest.json`（基于 `release/latest.json` 模板，填新版本号/日期/下载链接）
@@ -71,24 +98,35 @@ push tag 后，`.cnb.yml` 里的 `tag_push` 触发器并行启动三个 pipeline
 
 可选 flag：
 - `--skip-sign`：跳过签名步骤，只下载 + 重传（适合调试或不需要签名的发布）
-- `--from-local`：不下载 CI 产物，直接用 `./dist/` 下已签好的文件（适合手动下载场景）
+- `--from-local`：不下载 CI 产物，直接用 `./dist/` 下已签好的文件（mac/win 本地构建场景）
 
-### 3. 更新 README 下载区
+### 4. 更新 README 下载区
 
 打开 `README.md`，把「下载」区里三个链接的文件名版本号改成新版本（`1.2.3`）。
 
-### 4. 验证应用内检查更新
+### 5. 验证应用内检查更新
 
 启动 AgentTower → 菜单「检查更新」→ 应该拉取到 `<https://cnb.cool/.../-/releases/latest/download/latest.json>` 并提示新版本。如果提示「版本源请求失败」，说明 `latest.json` 没传或字段错了，重跑 release.sh。
 
-## 为什么签名不在 CI 里
+## 纯 Linux 发布的简化流（不需要 mac/win 时）
 
-- macOS 钥匙串里的 Developer ID 证书不能放到云端 CI runner（安全要求 + Apple 政策），所以 CI 只跑无签名的 `electron-builder --publish never`，签名留在开发者本地（`scripts/release.sh` 第 3 步）做。
-- Windows 的 `.pfx/.p12` 虽然可以 base64 编码塞进 CI 密钥，但因为签名是「先下载到本地再覆盖回 release」的设计，不如直接在本地一次签完更省时。
+如果只发 Linux（例如发 RC），可以完全跳过第 2 步：
 
-如果将来要给 CI 加签名（比如企业证书能放到专用 runner），最简单的扩展点：
-- mac：在 `build-mac` pipeline 的 `build` 阶段前注入 `CSC_LINK` / `CSC_KEY_PASSWORD` 等环境变量
-- win：在 `build-win` pipeline 同理
+```bash
+git tag v1.2.3-rc1 && git push --tags
+# 等 CI 在 release/v1.2.3-rc1/ 里上传 Linux 产物
+./scripts/release.sh v1.2.3-rc1
+# 脚本会下载 CI 产物（只有 Linux 三个文件）→ 没 mac/win 跳过签名 → 重传 → 标 latest
+```
+
+## 给 CI 加 mac/win 签名（如果以后配置了自建 runner）
+
+最简单的扩展点（在 `.cnb.yml` 加上对应 OS runner + 注入签名环境变量）：
+
+- macOS：跑 `macos-14` runner，构建脚本前 export `APPLE_ID` / `APPLE_APP_SPECIFIC_PASSWORD` / `APPLE_TEAM_ID`；`electron-builder.yml` 已配 `notarize: ${env.APPLE_ID}`，无需改 yml
+- Windows：跑 `windows-2022` runner，构建脚本前 export `CSC_LINK`（file:// 路径或 base64）+ `CSC_KEY_PASSWORD`
+
+但这条路要先有自建 mac/win runner 才能跑——CNB 不提供公开 runner。
 
 ## 手动 API（不推荐，保留备查）
 
