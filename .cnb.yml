@@ -21,8 +21,13 @@ main:
       stages:
         - name: 安装依赖
           jobs:
-            - name: npm ci
-              script: npm ci --ignore-scripts --registry=https://registry.npmmirror.com
+            - name: npm ci + electron
+              # --ignore-scripts 跳过原生模块 rebuild（避免 better-sqlite3 等在 CI 里编译失败），
+              # 但 electron 包自己的 postinstall.js 也要跑（下载 electron 二进制），
+              # 所以显式调一下 install.js
+              script: |
+                npm ci --ignore-scripts --registry=https://registry.npmmirror.com
+                node node_modules/electron/install.js
         - name: 类型检查与单元测试
           jobs:
             - name: typecheck
@@ -36,8 +41,10 @@ main:
       stages:
         - name: 安装依赖
           jobs:
-            - name: npm ci
-              script: npm ci --ignore-scripts --registry=https://registry.npmmirror.com
+            - name: npm ci + electron
+              script: |
+                npm ci --ignore-scripts --registry=https://registry.npmmirror.com
+                node node_modules/electron/install.js
         - name: 类型检查与单元测试
           jobs:
             - name: typecheck
@@ -51,8 +58,10 @@ main:
       stages:
         - name: 安装依赖
           jobs:
-            - name: npm ci
-              script: npm ci --ignore-scripts --registry=https://registry.npmmirror.com
+            - name: npm ci + electron
+              script: |
+                npm ci --ignore-scripts --registry=https://registry.npmmirror.com
+                node node_modules/electron/install.js
         - name: 类型检查与单元测试
           jobs:
             - name: typecheck
@@ -72,7 +81,9 @@ main:
               script: |
                 git clone --depth 1 "$CNB_REPO_URL_HTTPS" "$CNB_BUILD_WORKSPACE"
                 cd "$CNB_BUILD_WORKSPACE"
-                npm ci --registry=https://registry.npmmirror.com
+                npm ci --ignore-scripts --registry=https://registry.npmmirror.com
+                # 显式触发 electron 二进制下载（--ignore-scripts 跳过了 postinstall）
+                node node_modules/electron/install.js
         - name: build
           jobs:
             - name: electron-builder
