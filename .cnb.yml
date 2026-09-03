@@ -114,6 +114,10 @@ $:
           settings:
             tag: $CNB_BRANCH
             attachments:
+              # AppImage 用连字符：agent-tower-1.1.1.AppImage
               - "dist/agent-tower-*.AppImage"
-              - "dist/agent-tower-*_amd64.deb"
-              - "dist/latest-linux.yml"
+              # deb / snap 用下划线（electron-builder 默认 artifactName）：agent-tower_1.1.1_amd64.deb / .snap
+              - "dist/agent-tower_*_amd64.deb"
+              - "dist/agent-tower_*_amd64.snap"
+              # latest-linux.yml 由 --publish never 跳过生成；如启用 Linux 自动更新需
+              # 在 electron-builder.yml.linux 加 publish 配置并去掉 --publish never。
