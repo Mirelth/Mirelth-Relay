@@ -144,10 +144,12 @@ upload_file() {
   curl -fsS "${API_AUTH[@]}" -X POST "$verify_url" > /dev/null
 }
 
-for f in "$DIST_DIR"/*; do
+# 只上传本版本的文件（避免把旧版本产物也传上去）
+for f in "$DIST_DIR"/*-$VERSION* "$DIST_DIR"/*_$VERSION*; do
   [[ -f "$f" ]] || continue
   upload_file "$f"
 done
+[[ -f "$DIST_DIR/latest.json" ]] && upload_file "$DIST_DIR/latest.json"
 
 # ---------- 7) 标记为 latest ----------
 echo "→ 标记 release 为 latest"
