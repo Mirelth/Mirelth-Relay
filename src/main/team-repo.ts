@@ -3,6 +3,7 @@
  * 负责 ~/.agent-tower/team-repo/ 的初始化、同步和版本控制
  */
 import { execFileSync, execSync } from 'child_process'
+import { appendFileSync, readdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { HOME, exists, readText } from './lib/fs'
 import { logger } from './lib/logger'
@@ -39,11 +40,23 @@ export function initTeamRepo(): { success: boolean; error?: string } {
 .DS_Store
 *.log
 `
-      require('fs').writeFileSync(join(TEAM_REPO_DIR, '.gitignore'), gitignore)
+      writeFileSync(join(TEAM_REPO_DIR, '.gitignore'), gitignore)
 
       // 初始提交
       execFileSync('git', ['add', '.'], { cwd: TEAM_REPO_DIR })
-      execFileSync('git', ['commit', '-m', 'Initial team repo structure'], { cwd: TEAM_REPO_DIR })
+      execFileSync(
+        'git',
+        [
+          '-c',
+          'user.name=AgentTower',
+          '-c',
+          'user.email=agenttower@local',
+          'commit',
+          '-m',
+          'Initial team repo structure'
+        ],
+        { cwd: TEAM_REPO_DIR }
+      )
 
       logger.info('team-repo', `团队仓库已初始化：${TEAM_REPO_DIR}`)
       return { success: true }
@@ -71,9 +84,17 @@ export function getRepoStatus(): TeamRepoStatus {
   }
 
   try {
-    const branch = execSync('git branch --show-current', { cwd: TEAM_REPO_DIR, encoding: 'utf8' }).trim()
-    const remoteUrl = execSync('git remote get-url origin', { cwd: TEAM_REPO_DIR, encoding: 'utf8' }).trim() || undefined
-    const status = execSync('git status --porcelain', { cwd: TEAM_REPO_DIR, encoding: 'utf8' }).trim()
+    const branch = execSync('git branch --show-current', {
+      cwd: TEAM_REPO_DIR,
+      encoding: 'utf8'
+    }).trim()
+    const remoteUrl =
+      execSync('git remote get-url origin', { cwd: TEAM_REPO_DIR, encoding: 'utf8' }).trim() ||
+      undefined
+    const status = execSync('git status --porcelain', {
+      cwd: TEAM_REPO_DIR,
+      encoding: 'utf8'
+    }).trim()
 
     return {
       initialized: true,
@@ -111,10 +132,34 @@ export function addRemote(url: string): { success: boolean; error?: string } {
 /** Push 到远程 */
 export function pushToRemote(branch = 'main'): { success: boolean; error?: string } {
   try {
-    execFileSync('git', ['add', '.'], { cwd: TEAM_REPO_DIR })
-    execFileSync('git', ['commit', '-m', `Sync at ${new Date().toISOString()}`], { cwd: TEAM_REPO_DIR })
+    try {
+      execSync('git remote get-url origin', { cwd: TEAM_REPO_DIR, encoding: 'utf8' })
+    } catch {
+      return { success: false, error: '未配置远程仓库，请先在页面添加 remote 地址' }
+    }
+
+    const dirty = execSync('git status --porcelain', {
+      cwd: TEAM_REPO_DIR,
+      encoding: 'utf8'
+    }).trim()
+    if (dirty) {
+      execFileSync('git', ['add', '.'], { cwd: TEAM_REPO_DIR })
+      execFileSync(
+        'git',
+        [
+          '-c',
+          'user.name=AgentTower',
+          '-c',
+          'user.email=agenttower@local',
+          'commit',
+          '-m',
+          `Sync at ${new Date().toISOString()}`
+        ],
+        { cwd: TEAM_REPO_DIR }
+      )
+    }
     execFileSync('git', ['push', '-u', 'origin', branch], { cwd: TEAM_REPO_DIR })
-    logger.info('team-repo', `已推送到远程：${branch}`)
+    logger.info('team-repo', `已推送到远程：${branch}${dirty ? '' : '（无本地变更）'}`)
     return { success: true }
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err)
@@ -140,9 +185,7 @@ export function pullFromRemote(branch = 'main'): { success: boolean; error?: str
 export function listTeamSkills(): string[] {
   if (!exists(SKILLS_DIR)) return []
   try {
-    return require('fs')
-      .readdirSync(SKILLS_DIR)
-      .filter((name: string) => !name.startsWith('.'))
+    return readdirSync(SKILLS_DIR).filter((name) => !name.startsWith('.'))
   } catch {
     return []
   }
@@ -152,16 +195,18 @@ export function listTeamSkills(): string[] {
 export function listTeamRules(): string[] {
   if (!exists(RULES_DIR)) return []
   try {
-    return require('fs')
-      .readdirSync(RULES_DIR)
-      .filter((name: string) => !name.startsWith('.'))
+    return readdirSync(RULES_DIR).filter((name) => !name.startsWith('.'))
   } catch {
     return []
   }
 }
 
 /** 获取技能内容 */
-export function getSkillContent(skillName: string): { skillMd?: string; prompt?: string; examples?: string } {
+export function getSkillContent(skillName: string): {
+  skillMd?: string
+  prompt?: string
+  examples?: string
+} {
   const skillDir = join(SKILLS_DIR, skillName)
   if (!exists(skillDir)) return {}
 
@@ -178,18 +223,21 @@ export function getRuleContent(ruleName: string): string | null {
 }
 
 /** 保存技能 */
-export function saveSkill(skillName: string, content: { skillMd: string; prompt?: string; examples?: string }): { success: boolean; error?: string } {
+export function saveSkill(
+  skillName: string,
+  content: { skillMd: string; prompt?: string; examples?: string }
+): { success: boolean; error?: string } {
   try {
     const skillDir = join(SKILLS_DIR, skillName)
     if (!exists(skillDir)) {
       execFileSync('mkdir', ['-p', skillDir])
     }
-    require('fs').writeFileSync(join(skillDir, 'SKILL.md'), content.skillMd)
+    writeFileSync(join(skillDir, 'SKILL.md'), content.skillMd)
     if (content.prompt) {
-      require('fs').writeFileSync(join(skillDir, 'prompt.md'), content.prompt)
+      writeFileSync(join(skillDir, 'prompt.md'), content.prompt)
     }
     if (content.examples) {
-      require('fs').writeFileSync(join(skillDir, 'examples.md'), content.examples)
+      writeFileSync(join(skillDir, 'examples.md'), content.examples)
     }
     logger.info('team-repo', `技能已保存：${skillName}`)
     return { success: true }
@@ -203,7 +251,7 @@ export function saveSkill(skillName: string, content: { skillMd: string; prompt?
 /** 保存规则 */
 export function saveRule(ruleName: string, content: string): { success: boolean; error?: string } {
   try {
-    require('fs').writeFileSync(join(RULES_DIR, ruleName), content)
+    writeFileSync(join(RULES_DIR, ruleName), content)
     logger.info('team-repo', `规则已保存：${ruleName}`)
     return { success: true }
   } catch (err) {
@@ -223,17 +271,10 @@ export function recordFrictionPoint(agentId: string, description: string, catego
       category
     })
     const filePath = join(KNOWLEDGE_DIR, 'friction-points.jsonl')
-    require('fs').appendFileSync(filePath, line + '\n')
+    appendFileSync(filePath, line + '\n')
   } catch (err) {
     logger.error('team-repo', `记录摩擦点失败：${err}`)
   }
 }
 
-export {
-  TEAM_REPO_DIR,
-  SKILLS_DIR,
-  RULES_DIR,
-  MCP_DIR,
-  HOOKS_DIR,
-  KNOWLEDGE_DIR
-}
+export { TEAM_REPO_DIR, SKILLS_DIR, RULES_DIR, MCP_DIR, HOOKS_DIR, KNOWLEDGE_DIR }

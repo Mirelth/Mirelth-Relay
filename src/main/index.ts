@@ -3,7 +3,8 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { registerIpc } from './ipc'
-import { initGateway } from './llmgw'
+import { initGateway, gatewayTaskExecutor, gatewayDecomposer } from './llmgw'
+import { setDefaultTaskExecutor, setDefaultTaskDecomposer } from './execution-engine'
 import { refreshAndRecord, refreshAll } from './engine'
 import { checkAllMcp } from './mcp-health'
 import { getStore } from './cache'
@@ -87,6 +88,9 @@ app.whenReady().then(() => {
 
   registerIpc()
   alerts.setWindowFocusHandler(focusWindow)
+  // 任务系统的拆解/执行接线到 LLM 网关（subTask.assignedAgent 存模型配置 id，空则按复杂度自动路由）
+  setDefaultTaskExecutor(gatewayTaskExecutor)
+  setDefaultTaskDecomposer(gatewayDecomposer)
   void initGateway()
 
   createWindow()
@@ -166,7 +170,8 @@ app.whenReady().then(() => {
             await sleep(1000)
           }
           const image = await wc.capturePage()
-          const name = ((route === '/' ? 'dashboard' : route.slice(1)) + (shotClick ? '-click' : '')) + suffix
+          const name =
+            (route === '/' ? 'dashboard' : route.slice(1)) + (shotClick ? '-click' : '') + suffix
           require('fs').writeFileSync(join(shotDir, `${name}.png`), image.toPNG())
         }
       }
@@ -220,12 +225,19 @@ app.whenReady().then(() => {
         await wc.executeJavaScript(`location.hash = '${hash}'; 'ok'`)
         await sleep(2500)
       }
-      const bodyText = async (): Promise<string> => (await wc.executeJavaScript('document.body.innerText')) as string
+      const bodyText = async (): Promise<string> =>
+        (await wc.executeJavaScript('document.body.innerText')) as string
       const btnText = async (): Promise<string> =>
-        (await wc.executeJavaScript('[...document.querySelectorAll("button")].map(b=>b.textContent).join("|")')) as string
-      const SECRET_ANY = /(sk-[A-Za-z0-9_-]{16,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|LTAI[A-Za-z0-9]{12,22})/
+        (await wc.executeJavaScript(
+          '[...document.querySelectorAll("button")].map(b=>b.textContent).join("|")'
+        )) as string
+      const SECRET_ANY =
+        /(sk-[A-Za-z0-9_-]{16,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|LTAI[A-Za-z0-9]{12,22})/
       const out: { page: string; checks: { name: string; pass: boolean; detail?: string }[] }[] = []
-      const run = async (page: string, fn: () => Promise<{ name: string; pass: boolean; detail?: string }[]>): Promise<void> => {
+      const run = async (
+        page: string,
+        fn: () => Promise<{ name: string; pass: boolean; detail?: string }[]>
+      ): Promise<void> => {
         console.log(`[domtest] ${page} start`)
         await goto(page)
         out.push({ page, checks: await fn() })
@@ -238,8 +250,14 @@ app.whenReady().then(() => {
         return [
           { name: '侧栏含安全体检入口', pass: t.includes('安全体检') },
           { name: '顶栏版本按钮存在', pass: /\bv\d+\.\d+\.\d+/.test(b), detail: b.slice(0, 120) },
-          { name: '仪表盘卡片渲染', pass: t.includes('检测到智能体') && t.includes('今日 Token 消耗') },
-          { name: '无崩溃文案', pass: !t.includes('TypeError') && !t.includes('Something went wrong') }
+          {
+            name: '仪表盘卡片渲染',
+            pass: t.includes('检测到智能体') && t.includes('今日 Token 消耗')
+          },
+          {
+            name: '无崩溃文案',
+            pass: !t.includes('TypeError') && !t.includes('Something went wrong')
+          }
         ]
       })
       await run('/tokens', async () => {
@@ -247,7 +265,10 @@ app.whenReady().then(() => {
         const b = await btnText()
         return [
           { name: '估算成本卡存在', pass: t.includes('估算成本') },
-          { name: '覆盖率/定价状态文案', pass: t.includes('覆盖') || t.includes('全部模型已定价') || t.includes('暂无用量') },
+          {
+            name: '覆盖率/定价状态文案',
+            pass: t.includes('覆盖') || t.includes('全部模型已定价') || t.includes('暂无用量')
+          },
           { name: '模型单价按钮', pass: b.includes('模型单价') },
           { name: '导出CSV按钮', pass: b.includes('导出 CSV') }
         ]
@@ -255,8 +276,14 @@ app.whenReady().then(() => {
       await run('/security', async () => {
         const t = await bodyText()
         return [
-          { name: '三张汇总卡标题', pass: t.includes('检查文件') && t.includes('高危') && t.includes('需关注') },
-          { name: '有风险清单或干净结论', pass: t.includes('风险清单') || t.includes('未发现明文密钥') },
+          {
+            name: '三张汇总卡标题',
+            pass: t.includes('检查文件') && t.includes('高危') && t.includes('需关注')
+          },
+          {
+            name: '有风险清单或干净结论',
+            pass: t.includes('风险清单') || t.includes('未发现明文密钥')
+          },
           { name: '无完整明文密钥泄露', pass: !SECRET_ANY.test(t) }
         ]
       })
@@ -269,10 +296,22 @@ app.whenReady().then(() => {
         const b = await btnText()
         return [
           { name: '页面有内容', pass: t.length > 80, detail: `len=${t.length}` },
-          { name: '安装状态筛选器', pass: b.includes('已安装') && b.includes('配置残留') && b.includes('状态未知') },
+          {
+            name: '安装状态筛选器',
+            pass: b.includes('已安装') && b.includes('配置残留') && b.includes('状态未知')
+          },
           { name: '卡片显示已安装徽标', pass: t.includes('已安装') },
-          { name: '本机确有残留智能体被识别（opencode/codebuddy 卸载后剩配置）', pass: t.includes('个智能体已检测到配置'), detail: t.match(/(\d+) 配置残留/)?.[1] ? `残留数=${t.match(/(\d+) 配置残留/)![1]}` : '未见残留提示' },
-          { name: 'DSH 已拆分为 Web 与 Desktop 两实体', pass: t.includes('DSH Web') && t.includes('DSH Desktop') }
+          {
+            name: '本机确有残留智能体被识别（opencode/codebuddy 卸载后剩配置）',
+            pass: t.includes('个智能体已检测到配置'),
+            detail: t.match(/(\d+) 配置残留/)?.[1]
+              ? `残留数=${t.match(/(\d+) 配置残留/)![1]}`
+              : '未见残留提示'
+          },
+          {
+            name: 'DSH 已拆分为 Web 与 Desktop 两实体',
+            pass: t.includes('DSH Web') && t.includes('DSH Desktop')
+          }
         ]
       })
       for (const page of ['/skills', '/mcp', '/models', '/hooks']) {
@@ -284,8 +323,14 @@ app.whenReady().then(() => {
           ]
         })
       }
-      const failed = out.flatMap((p) => p.checks.filter((c) => !c.pass).map((c) => `${p.page} ${c.name}`))
-      require('fs').writeFileSync(domTestOut, JSON.stringify({ ok: failed.length === 0, failed, pages: out }, null, 2), 'utf8')
+      const failed = out.flatMap((p) =>
+        p.checks.filter((c) => !c.pass).map((c) => `${p.page} ${c.name}`)
+      )
+      require('fs').writeFileSync(
+        domTestOut,
+        JSON.stringify({ ok: failed.length === 0, failed, pages: out }, null, 2),
+        'utf8'
+      )
       alerts.markQuitting()
       app.exit(0)
     })()

@@ -1,12 +1,33 @@
 /**
- * 执行引擎：任务拆解、分配和调度
+ * 执行引擎：任务拆解、分配和调度。
+ * 拆解与执行的真实实现由「LLM 网关」注入（见 setDefaultTaskExecutor /
+ * setDefaultTaskDecomposer，main 启动时接线到 llmgw 模块）；
+ * 未注入时给出明确错误，不再提供假的默认实现。
  */
 import { join } from 'path'
 import { HOME, readJson } from './lib/fs'
+import * as fs from 'fs'
 import { logger } from './lib/logger'
 import type { Task, SubTask, TaskStatus, CollaborationMode } from '../shared/task-types'
+import { validateConstraints, handleViolation } from './constraints'
+import { updateTrustScore, recordFrictionPoint } from './trust-scoring'
 
 const TASKS_PATH = join(HOME, '.agent-tower', 'tasks.json')
+
+export type TaskExecutorResult = string | { output: string; modelId?: string }
+export type TaskExecutor = (agentId: string, description: string) => Promise<TaskExecutorResult>
+export type TaskDecomposer = (description: string) => Promise<string[]>
+
+let platformExecutor: TaskExecutor | null = null
+let platformDecomposer: TaskDecomposer | null = null
+
+/** main 启动时注入真实实现（LLM 网关） */
+export function setDefaultTaskExecutor(fn: TaskExecutor): void {
+  platformExecutor = fn
+}
+export function setDefaultTaskDecomposer(fn: TaskDecomposer): void {
+  platformDecomposer = fn
+}
 
 export interface ExecutionEngine {
   createTask(task: Omit<Task, 'id' | 'status' | 'createdAt' | 'subTasks'>): Promise<string>
@@ -26,7 +47,8 @@ export function getTasks(): Task[] {
 /** 保存任务列表 */
 export function saveTasks(tasks: Task[]): void {
   try {
-    require('fs').writeFileSync(TASKS_PATH, JSON.stringify(tasks, null, 2))
+    fs.mkdirSync(join(TASKS_PATH, '..'), { recursive: true })
+    fs.writeFileSync(TASKS_PATH, JSON.stringify(tasks, null, 2))
     logger.info('execution', `已保存 ${tasks.length} 个任务`)
   } catch (err) {
     logger.error('execution', `保存任务失败：${err}`)
@@ -118,23 +140,24 @@ export function updateSubTaskStatus(
   return task
 }
 
-/** 任务拆解（基于 LLM） */
+/** 任务拆解（LLM 拆解，需已注入 decomposer） */
 export async function decomposeTask(
   taskId: string,
-  decomposeFn?: (description: string) => Promise<string[]>
+  decomposeFn?: TaskDecomposer
 ): Promise<SubTask[]> {
   const task = getTask(taskId)
   if (!task) return []
 
-  // 使用提供的拆解函数或默认实现
-  const descriptions = decomposeFn
-    ? await decomposeFn(task.description)
-    : await defaultDecompose(task.description)
+  const decompose = decomposeFn ?? platformDecomposer
+  if (!decompose) {
+    throw new Error('智能拆解不可用：请先在「LLM 网关」页配置并启用模型')
+  }
+  const descriptions = await decompose(task.description)
 
   const subTasks: SubTask[] = descriptions.map((desc, index) => ({
     id: `subtask-${taskId}-${index}`,
     description: desc,
-    assignedAgent: task.assignedAgents[index % task.assignedAgents.length] || '',
+    assignedAgent: task.assignedAgents[index % Math.max(task.assignedAgents.length, 1)] || '',
     status: 'pending'
   }))
 
@@ -147,22 +170,6 @@ export async function decomposeTask(
   }
 
   return subTasks
-}
-
-/** 默认拆解实现（简单按句子分割） */
-async function defaultDecompose(description: string): Promise<string[]> {
-  // 实际实现应该调用 LLM API
-  // 这里先实现一个简单的基于句号的分割
-  const sentences = description
-    .split(/[。！？.!?]+/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 10)
-
-  if (sentences.length === 0) {
-    return [description]
-  }
-
-  return sentences.slice(0, 5) // 最多 5 个子任务
 }
 
 /** 分配子任务到 Agent */
@@ -179,11 +186,11 @@ export function assignSubTask(taskId: string, subTaskId: string, agentId: string
   return true
 }
 
-/** 执行子任务（通过 CLI 调用 Agent） */
+/** 执行子任务：约束校验 → 真实执行 → 信任度回写 */
 export async function executeSubTask(
   taskId: string,
   subTaskId: string,
-  executeFn?: (agentId: string, description: string) => Promise<string>
+  executeFn?: TaskExecutor
 ): Promise<string> {
   const task = getTask(taskId)
   if (!task) return ''
@@ -191,30 +198,58 @@ export async function executeSubTask(
   const subTask = task.subTasks.find((st) => st.id === subTaskId)
   if (!subTask) return ''
 
-  // 更新状态为运行中
+  // 执行前约束校验：block 直接失败；warn 记入输出前缀
+  const warnings: string[] = []
+  for (const violation of validateConstraints(subTask.assignedAgent, {
+    currentHour: new Date().getHours()
+  })) {
+    const handled = handleViolation(violation)
+    if (!handled.allowed) {
+      updateSubTaskStatus(taskId, subTaskId, 'failed', undefined, handled.message)
+      return ''
+    }
+    if (handled.message) warnings.push(handled.message)
+  }
+
   updateSubTaskStatus(taskId, subTaskId, 'running')
 
+  const execute = executeFn ?? platformExecutor
+  const started = Date.now()
   try {
-    // 使用提供的执行函数或默认实现
-    const output = executeFn
-      ? await executeFn(subTask.assignedAgent, subTask.description)
-      : await defaultExecute(subTask.assignedAgent, subTask.description)
-
+    if (!execute) {
+      throw new Error('任务执行器未初始化：请先在「LLM 网关」页配置并启用模型')
+    }
+    const result = await execute(subTask.assignedAgent, subTask.description)
+    const raw = typeof result === 'string' ? result : result.output
+    const output = warnings.length > 0 ? `${warnings.join('；')}\n${raw}` : raw
+    // 自动路由时把实际选中的模型回写到子任务，保证 UI 可观测
+    if (!subTask.assignedAgent && typeof result === 'object' && result.modelId) {
+      subTask.assignedAgent = result.modelId
+      const tasks2 = getTasks()
+      const t2 = tasks2.find((x) => x.id === taskId)
+      const st2 = t2?.subTasks.find((x) => x.id === subTaskId)
+      if (t2 && st2) {
+        st2.assignedAgent = result.modelId
+        saveTasks(tasks2)
+      }
+    }
     updateSubTaskStatus(taskId, subTaskId, 'completed', output)
+    updateTrustScore(subTask.assignedAgent, true, Date.now() - started)
     return output
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err)
     updateSubTaskStatus(taskId, subTaskId, 'failed', undefined, error)
+    updateTrustScore(subTask.assignedAgent, false, Date.now() - started)
+    recordFrictionPoint({
+      id: `fp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      agentId: subTask.assignedAgent,
+      taskId,
+      description: error,
+      category: 'error',
+      createdAt: Date.now()
+    })
     return ''
   }
-}
-
-/** 默认执行实现（调用 Agent CLI） */
-async function defaultExecute(agentId: string, description: string): Promise<string> {
-  // 实际实现应该调用对应 Agent 的 CLI
-  // 例如：execFileSync('claude', [description])
-  logger.info('execution', `执行子任务：${agentId} - ${description.slice(0, 50)}...`)
-  return `[${agentId}] 执行完成：${description}`
 }
 
 /** 监控任务执行状态 */

@@ -46,6 +46,83 @@ export function anthropicMessagesUrl(baseURL: string): string {
   return base.endsWith('/v1/messages') ? base : `${base}/v1/messages`
 }
 
+// ---------- 共享上游调用（HTTP 服务与任务执行器共用） ----------
+
+async function postOpenAI(
+  target: GwModelConfig,
+  body: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  const res = await fetch(openAiChatUrl(target.baseURL), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${target.apiKey}` },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS)
+  })
+  const text = await res.text()
+  if (!res.ok) throw new Error(`HTTP ${res.status} ${text.slice(0, 300)}`)
+  return JSON.parse(text) as Record<string, unknown>
+}
+
+async function postAnthropic(
+  target: GwModelConfig,
+  body: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  const res = await fetch(anthropicMessagesUrl(target.baseURL), {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': target.apiKey,
+      'anthropic-version': '2023-06-01'
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS)
+  })
+  const text = await res.text()
+  if (!res.ok) throw new Error(`HTTP ${res.status} ${text.slice(0, 300)}`)
+  return JSON.parse(text) as Record<string, unknown>
+}
+
+/** 任务执行器用的精简调用：发一段对话，拿回文本输出 */
+export async function callUpstreamText(
+  target: GwModelConfig,
+  messages: { role: string; content: unknown }[],
+  opts: { maxTokens?: number; temperature?: number } = {}
+): Promise<string> {
+  if (target.kind === 'anthropic') {
+    const system = messages
+      .filter((m) => m.role === 'system')
+      .map((m) => (typeof m.content === 'string' ? m.content : ''))
+      .filter(Boolean)
+      .join('\n')
+    const raw = await postAnthropic(target, {
+      model: target.model,
+      max_tokens: opts.maxTokens && opts.maxTokens > 0 ? opts.maxTokens : 4096,
+      ...(system ? { system } : {}),
+      ...(opts.temperature != null ? { temperature: opts.temperature } : {}),
+      messages: messages
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .map((m) => ({ role: m.role, content: m.content }))
+    })
+    const content = Array.isArray(raw.content) ? raw.content : []
+    return content
+      .map((c) =>
+        typeof c === 'object' && c !== null && 'text' in c
+          ? String((c as { text: unknown }).text)
+          : ''
+      )
+      .join('')
+  }
+  const raw = await postOpenAI(target, {
+    model: target.model,
+    messages,
+    ...(opts.maxTokens != null ? { max_tokens: opts.maxTokens } : {}),
+    ...(opts.temperature != null ? { temperature: opts.temperature } : {}),
+    stream: false
+  })
+  const choice = (raw.choices as { message?: { content?: string } }[] | undefined)?.[0]
+  return choice?.message?.content ?? ''
+}
+
 export class GatewayServer {
   private server: http.Server | null = null
   private _port = 0
@@ -333,48 +410,29 @@ export class GatewayServer {
   ): Promise<Record<string, unknown>> {
     // 新版 OpenAI 参数：客户端只传了 max_completion_tokens 时沿用该字段名
     const useCompletion = body.max_tokens == null && body.max_completion_tokens != null
-    const res = await fetch(openAiChatUrl(target.baseURL), {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${target.apiKey}` },
-      body: JSON.stringify({
-        model: target.model,
-        messages: body.messages,
-        ...(body.max_tokens != null ? { max_tokens: body.max_tokens } : {}),
-        ...(useCompletion ? { max_completion_tokens: body.max_completion_tokens } : {}),
-        ...(body.temperature != null ? { temperature: body.temperature } : {}),
-        // 无副作用的采样/输出控制参数原样透传
-        ...(body.stop != null ? { stop: body.stop } : {}),
-        ...(body.top_p != null ? { top_p: body.top_p } : {}),
-        ...(body.n != null ? { n: body.n } : {}),
-        ...(body.response_format != null ? { response_format: body.response_format } : {}),
-        ...(body.tools != null ? { tools: body.tools } : {}),
-        ...(body.tool_choice != null ? { tool_choice: body.tool_choice } : {}),
-        stream: false
-      }),
-      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS)
+    return await postOpenAI(target, {
+      model: target.model,
+      messages: body.messages,
+      ...(body.max_tokens != null ? { max_tokens: body.max_tokens } : {}),
+      ...(useCompletion ? { max_completion_tokens: body.max_completion_tokens } : {}),
+      ...(body.temperature != null ? { temperature: body.temperature } : {}),
+      // 无副作用的采样/输出控制参数原样透传
+      ...(body.stop != null ? { stop: body.stop } : {}),
+      ...(body.top_p != null ? { top_p: body.top_p } : {}),
+      ...(body.n != null ? { n: body.n } : {}),
+      ...(body.response_format != null ? { response_format: body.response_format } : {}),
+      ...(body.tools != null ? { tools: body.tools } : {}),
+      ...(body.tool_choice != null ? { tool_choice: body.tool_choice } : {}),
+      stream: false
     })
-    const text = await res.text()
-    if (!res.ok) throw new Error(`HTTP ${res.status} ${text.slice(0, 300)}`)
-    return JSON.parse(text) as Record<string, unknown>
   }
 
   private async callAnthropic(
     target: GwModelConfig,
     body: IncomingChatRequest
   ): Promise<Record<string, unknown>> {
-    const res = await fetch(anthropicMessagesUrl(target.baseURL), {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': target.apiKey,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify(this.toAnthropicBody(target, body)),
-      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS)
-    })
-    const text = await res.text()
-    if (!res.ok) throw new Error(`HTTP ${res.status} ${text.slice(0, 300)}`)
-    return this.fromAnthropicResponse(JSON.parse(text) as Record<string, unknown>, target.model)
+    const raw = await postAnthropic(target, this.toAnthropicBody(target, body))
+    return this.fromAnthropicResponse(raw, target.model)
   }
 
   /** stream:true 的单块 SSE 模拟：role → content → finish → [DONE] */

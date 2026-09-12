@@ -604,8 +604,8 @@ export function registerIpc(): void {
         input.title,
         input.description,
         input.mode as any,
-        input.agents,
-        input.dependencies
+        input.agents ?? [],
+        input.dependencies ?? []
       )
   )
 

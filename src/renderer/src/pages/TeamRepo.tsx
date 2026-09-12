@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { CloudUpload, CloudDownload, FolderGit, Plus } from 'lucide-react'
 
 interface TeamSkill {
   name: string
@@ -21,191 +22,298 @@ interface RepoStatus {
   localChanges: boolean
 }
 
-export default function TeamRepo() {
+export default function TeamRepo(): React.JSX.Element {
   const [status, setStatus] = useState<RepoStatus | null>(null)
   const [skills, setSkills] = useState<TeamSkill[]>([])
   const [rules, setRules] = useState<TeamRule[]>([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
+  const [remoteInput, setRemoteInput] = useState('')
+  const [showNewRule, setShowNewRule] = useState(false)
+  const [ruleName, setRuleName] = useState('')
+  const [ruleBody, setRuleBody] = useState('')
 
-  const loadData = async () => {
-    setLoading(true)
+  const reload = useCallback(async (): Promise<void> => {
     try {
-      const [statusRes, skillsRes, rulesRes] = await Promise.all([
+      const [s, sk, r] = await Promise.all([
         window.api.teamRepoStatus(),
         window.api.teamRepoSkills(),
         window.api.teamRepoRules()
       ])
-      setStatus(statusRes)
-      setSkills(skillsRes || [])
-      setRules(rulesRes || [])
+      setStatus(s)
+      setSkills(sk || [])
+      setRules(r || [])
     } catch (err) {
-      setMessage(`加载失败：${err}`)
+      setMessage(`加载失败：${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setLoading(false)
     }
-  }
-
-  useEffect(() => {
-    loadData()
   }, [])
 
-  const handleInit = async () => {
+  useEffect(() => {
+    void reload()
+  }, [reload])
+
+  const act = async (
+    fn: () => Promise<{
+      success: boolean
+      error?: string
+      syncedSkills?: string[]
+      syncedRules?: string[]
+    }>,
+    okPrefix: string
+  ): Promise<void> => {
+    setMessage('')
     try {
-      const result = await window.api.teamRepoInit()
+      const result = await fn()
       if (result.success) {
-        setMessage('团队仓库初始化成功')
-        loadData()
+        const n = result.syncedSkills
+          ? `：${result.syncedSkills.length} 个技能 / ${result.syncedRules?.length ?? 0} 个规则`
+          : ''
+        setMessage(`${okPrefix}成功${n}`)
+        await reload()
       } else {
-        setMessage(`初始化失败：${result.error}`)
+        setMessage(`${okPrefix}失败：${result.error}`)
       }
     } catch (err) {
-      setMessage(`操作失败：${err}`)
+      setMessage(`操作失败：${err instanceof Error ? err.message : String(err)}`)
     }
   }
 
-  const handlePush = async () => {
-    try {
-      const result = await window.api.teamRepoPush()
-      if (result.success) {
-        setMessage(`推送成功：${result.syncedSkills.length} 个技能，${result.syncedRules.length} 个规则`)
-      } else {
-        setMessage(`推送失败：${result.error}`)
-      }
-    } catch (err) {
-      setMessage(`操作失败：${err}`)
-    }
+  const addRemote = async (): Promise<void> => {
+    if (!remoteInput.trim()) return
+    await act(() => window.api.teamRepoAddRemote(remoteInput.trim()), '添加远程')
+    setRemoteInput('')
   }
 
-  const handlePull = async () => {
-    try {
-      const result = await window.api.teamRepoPull()
-      if (result.success) {
-        setMessage(`拉取成功：${result.syncedSkills.length} 个技能，${result.syncedRules.length} 个规则`)
-        loadData()
-      } else {
-        setMessage(`拉取失败：${result.error}`)
-      }
-    } catch (err) {
-      setMessage(`操作失败：${err}`)
-    }
+  const saveRule = async (): Promise<void> => {
+    if (!ruleName.trim() || !ruleBody.trim()) return
+    const name = ruleName.trim().endsWith('.md') ? ruleName.trim() : `${ruleName.trim()}.md`
+    await act(() => window.api.teamRepoSaveRule(name, ruleBody), `保存规则 ${name}`)
+    setShowNewRule(false)
+    setRuleName('')
+    setRuleBody('')
   }
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold mb-6">团队仓库</h1>
+    <div className="space-y-4">
+      <div className="text-sm" style={{ color: 'var(--muted)' }}>
+        团队仓库是一个 Git 仓库（~/.agent-tower/team-repo），集中管理团队的 Skills
+        与规则文件；绑定远程后可在成员间 push/pull 同步。
+      </div>
 
       {message && (
-        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded text-blue-800">
+        <div
+          className="card p-3 text-sm"
+          style={{ color: message.includes('失败') ? 'var(--bad)' : 'var(--ok)' }}
+        >
           {message}
         </div>
       )}
 
       {/* 仓库状态 */}
-      <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-        <h2 className="text-lg font-semibold mb-3">仓库状态</h2>
-        {status ? (
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <span className="text-gray-600">初始化：</span>
-              <span className={status.initialized ? 'text-green-600' : 'text-red-600'}>
-                {status.initialized ? '已初始化' : '未初始化'}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-gray-600">Git 仓库：</span>
-              <span className={status.isGitRepo ? 'text-green-600' : 'text-yellow-600'}>
-                {status.isGitRepo ? '是' : '否'}
-              </span>
-            </div>
-            {status.remoteUrl && (
-              <div className="flex items-center gap-2">
-                <span className="text-gray-600">远程地址：</span>
-                <span className="text-blue-600">{status.remoteUrl}</span>
-              </div>
-            )}
-            <div className="flex items-center gap-2">
-              <span className="text-gray-600">分支：</span>
-              <span>{status.branch}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-gray-600">本地更改：</span>
-              <span className={status.localChanges ? 'text-yellow-600' : 'text-green-600'}>
-                {status.localChanges ? '有未提交更改' : '无'}
-              </span>
-            </div>
+      <div className="card space-y-2 p-4">
+        <div className="text-sm font-medium">仓库状态</div>
+        {loading || !status ? (
+          <div className="text-xs" style={{ color: 'var(--muted)' }}>
+            加载中…
           </div>
         ) : (
-          <p className="text-gray-500">加载中...</p>
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span
+              className="badge"
+              style={{
+                background: `color-mix(in srgb, ${status.initialized ? 'var(--ok)' : 'var(--bad)'} 14%, transparent)`,
+                color: status.initialized ? 'var(--ok)' : 'var(--bad)'
+              }}
+            >
+              {status.initialized ? '已初始化' : '未初始化'}
+            </span>
+            <span
+              className="badge"
+              style={{
+                background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
+                color: 'var(--accent)'
+              }}
+            >
+              分支 {status.branch}
+            </span>
+            {status.remoteUrl && (
+              <span
+                className="truncate font-mono text-xs"
+                style={{ color: 'var(--muted)' }}
+                title={status.remoteUrl}
+              >
+                {status.remoteUrl}
+              </span>
+            )}
+            {status.localChanges && (
+              <span
+                className="badge"
+                style={{
+                  background: 'color-mix(in srgb, var(--warn) 14%, transparent)',
+                  color: 'var(--warn)'
+                }}
+              >
+                有未提交更改
+              </span>
+            )}
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          {status && !status.initialized && (
+            <button
+              className="btn btn-primary"
+              onClick={() => void act(() => window.api.teamRepoInit(), '初始化')}
+              disabled={loading}
+            >
+              <FolderGit size={14} />
+              初始化仓库
+            </button>
+          )}
+          {status?.initialized && (
+            <>
+              <button
+                className="btn btn-primary"
+                onClick={() => void act(() => window.api.teamRepoPush(), '推送')}
+                disabled={loading}
+              >
+                <CloudUpload size={14} />
+                推送到远程
+              </button>
+              <button
+                className="btn"
+                onClick={() => void act(() => window.api.teamRepoPull(), '拉取')}
+                disabled={loading}
+              >
+                <CloudDownload size={14} />
+                从远程拉取
+              </button>
+              <button className="btn" onClick={() => setShowNewRule((v) => !v)}>
+                <Plus size={14} />
+                新建规则
+              </button>
+            </>
+          )}
+        </div>
+
+        {status?.initialized && !status.remoteUrl && (
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <input
+              className="input min-w-0 flex-1 font-mono text-xs"
+              placeholder="git@cnb.cool:your-org/team-repo.git（团队共享时填写）"
+              value={remoteInput}
+              onChange={(e) => setRemoteInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void addRemote()
+              }}
+            />
+            <button className="btn" onClick={() => void addRemote()} disabled={!remoteInput.trim()}>
+              绑定远程
+            </button>
+          </div>
         )}
       </div>
 
-      {/* 操作按钮 */}
-      <div className="mb-6 flex gap-3">
-        {!status?.initialized && (
-          <button
-            onClick={handleInit}
-            disabled={loading}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-          >
-            初始化仓库
-          </button>
-        )}
-        {status?.initialized && (
-          <>
-            <button
-              onClick={handlePush}
-              disabled={loading}
-              className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
-            >
-              推送到远程
+      {showNewRule && (
+        <div className="card space-y-3 p-4">
+          <label className="grid gap-1">
+            <span className="text-xs" style={{ color: 'var(--muted)' }}>
+              规则名（自动补 .md）
+            </span>
+            <input
+              className="input"
+              value={ruleName}
+              onChange={(e) => setRuleName(e.target.value)}
+              placeholder="code-style"
+            />
+          </label>
+          <label className="grid gap-1">
+            <span className="text-xs" style={{ color: 'var(--muted)' }}>
+              规则内容（Markdown）
+            </span>
+            <textarea
+              className="input min-h-32 font-mono text-xs"
+              value={ruleBody}
+              onChange={(e) => setRuleBody(e.target.value)}
+              placeholder="# 团队代码规范&#10;- 提交信息使用中文&#10;…"
+            />
+          </label>
+          <div className="flex justify-end gap-2">
+            <button className="btn" onClick={() => setShowNewRule(false)}>
+              取消
             </button>
             <button
-              onClick={handlePull}
-              disabled={loading}
-              className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
+              className="btn btn-primary"
+              disabled={!ruleName.trim() || !ruleBody.trim()}
+              onClick={() => void saveRule()}
             >
-              从远程拉取
+              保存
             </button>
-          </>
-        )}
-      </div>
+          </div>
+        </div>
+      )}
 
       {/* 技能列表 */}
-      <div className="mb-6">
-        <h2 className="text-lg font-semibold mb-3">团队技能 ({skills.length})</h2>
-        {skills.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="card overflow-hidden">
+        <div
+          className="border-b px-4 py-3 text-sm font-medium"
+          style={{ borderColor: 'var(--border)' }}
+        >
+          团队技能（{skills.length}）
+        </div>
+        {skills.length === 0 ? (
+          <div className="px-4 py-8 text-center text-xs" style={{ color: 'var(--muted)' }}>
+            暂无技能。skills/&lt;name&gt;/SKILL.md 结构的目录会被识别为团队技能。
+          </div>
+        ) : (
+          <div className="grid gap-3 p-4 md:grid-cols-2 lg:grid-cols-3">
             {skills.map((skill) => (
-              <div key={skill.name} className="p-4 border rounded-lg bg-white">
-                <h3 className="font-medium mb-2">{skill.name}</h3>
-                <div className="text-sm text-gray-600 space-y-1">
-                  <div>{skill.hasSkillMd ? '✓ SKILL.md' : '✗ SKILL.md'}</div>
-                  <div>{skill.hasPrompt ? '✓ prompt.md' : '✗ prompt.md'}</div>
-                  <div>{skill.hasExamples ? '✓ examples.md' : '✗ examples.md'}</div>
+              <div
+                key={skill.name}
+                className="rounded-lg border p-3"
+                style={{ borderColor: 'var(--border)' }}
+              >
+                <div className="mb-2 font-medium">{skill.name}</div>
+                <div className="space-y-0.5 text-xs" style={{ color: 'var(--muted)' }}>
+                  <div>{skill.hasSkillMd ? '✓' : '✗'} SKILL.md</div>
+                  <div>{skill.hasPrompt ? '✓' : '✗'} prompt.md</div>
+                  <div>{skill.hasExamples ? '✓' : '✗'} examples.md</div>
                 </div>
               </div>
             ))}
           </div>
-        ) : (
-          <p className="text-gray-500">暂无技能</p>
         )}
       </div>
 
       {/* 规则列表 */}
-      <div>
-        <h2 className="text-lg font-semibold mb-3">团队规则 ({rules.length})</h2>
-        {rules.length > 0 ? (
-          <div className="space-y-2">
+      <div className="card overflow-hidden">
+        <div
+          className="border-b px-4 py-3 text-sm font-medium"
+          style={{ borderColor: 'var(--border)' }}
+        >
+          团队规则（{rules.length}）
+        </div>
+        {rules.length === 0 ? (
+          <div className="px-4 py-8 text-center text-xs" style={{ color: 'var(--muted)' }}>
+            暂无规则，点击上方「新建规则」创建第一条
+          </div>
+        ) : (
+          <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
             {rules.map((rule) => (
-              <div key={rule.name} className="p-3 border rounded bg-white">
-                <div className="font-medium">{rule.name}</div>
-                <div className="text-sm text-gray-600 mt-1">{rule.preview}...</div>
+              <div key={rule.name} className="px-4 py-3">
+                <div className="text-sm font-medium">{rule.name}</div>
+                <div
+                  className="mt-1 truncate text-xs"
+                  style={{ color: 'var(--muted)' }}
+                  title={rule.preview}
+                >
+                  {rule.preview || '（空文件）'}
+                </div>
               </div>
             ))}
           </div>
-        ) : (
-          <p className="text-gray-500">暂无规则</p>
         )}
       </div>
     </div>

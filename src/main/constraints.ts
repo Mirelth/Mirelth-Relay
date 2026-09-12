@@ -2,6 +2,7 @@
  * Agent 行为约束管理
  * 定义和校验 Agent 执行时的约束条件（Token 限额、模型白名单、成本上限等）
  */
+import { mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { HOME, readJson } from './lib/fs'
 import { logger } from './lib/logger'
@@ -27,7 +28,8 @@ export function getConstraints(): AgentConstraint[] {
 /** 保存约束列表 */
 export function saveConstraints(constraints: AgentConstraint[]): void {
   try {
-    require('fs').writeFileSync(CONSTRAINTS_PATH, JSON.stringify(constraints, null, 2))
+    mkdirSync(join(CONSTRAINTS_PATH, '..'), { recursive: true })
+    writeFileSync(CONSTRAINTS_PATH, JSON.stringify(constraints, null, 2))
     logger.info('constraints', `已保存 ${constraints.length} 条约束`)
   } catch (err) {
     logger.error('constraints', `保存失败：${err}`)
@@ -35,7 +37,9 @@ export function saveConstraints(constraints: AgentConstraint[]): void {
 }
 
 /** 添加约束 */
-export function addConstraint(constraint: Omit<AgentConstraint, 'id' | 'createdAt'>): AgentConstraint {
+export function addConstraint(
+  constraint: Omit<AgentConstraint, 'id' | 'createdAt'>
+): AgentConstraint {
   const constraints = getConstraints()
   const newConstraint: AgentConstraint = {
     ...constraint,
@@ -48,7 +52,10 @@ export function addConstraint(constraint: Omit<AgentConstraint, 'id' | 'createdA
 }
 
 /** 更新约束 */
-export function updateConstraint(id: string, updates: Partial<AgentConstraint>): AgentConstraint | null {
+export function updateConstraint(
+  id: string,
+  updates: Partial<AgentConstraint>
+): AgentConstraint | null {
   const constraints = getConstraints()
   const index = constraints.findIndex((c) => c.id === id)
   if (index === -1) return null
@@ -179,7 +186,10 @@ function checkConstraint(
 }
 
 /** 处理约束违反 */
-export function handleViolation(violation: ConstraintViolation): { allowed: boolean; message: string } {
+export function handleViolation(violation: ConstraintViolation): {
+  allowed: boolean
+  message: string
+} {
   switch (violation.action) {
     case 'block':
       return {

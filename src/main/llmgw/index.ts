@@ -8,8 +8,8 @@ import type {
   GwSimulationResult
 } from '@shared/types'
 import { GwStore } from './store'
-import { GatewayServer, openAiChatUrl, anthropicMessagesUrl } from './server'
-import { simulate } from './router'
+import { GatewayServer, callUpstreamText } from './server'
+import { simulate, assessComplexity, pickModel } from './router'
 
 /**
  * 网关装配层：单例 store + server + 最近请求环形日志（内存，100 条）。
@@ -99,6 +99,67 @@ export function gwSimulate(text: string, maxTokens = 0): GwSimulationResult {
   return simulate(cfg.models, text.slice(0, 200000), maxTokens)
 }
 
+// ---------- 任务系统执行器（供 execution-engine 调用） ----------
+
+export interface GatewayExecResult {
+  output: string
+  modelId: string
+  modelName: string
+  latencyMs: number
+}
+
+/**
+ * 用网关模型执行一段任务提示。modelId 为空时按复杂度自动路由。
+ * 网关没有已启用模型时抛出带引导信息的错误。
+ */
+export async function gatewayTaskExecutor(
+  agentId: string,
+  prompt: string,
+  opts: { maxTokens?: number; temperature?: number } = {}
+): Promise<GatewayExecResult> {
+  const cfg = getStore().get()
+  const enabled = cfg.models.filter((m) => m.enabled)
+  let target = agentId ? enabled.find((m) => m.id === agentId) : undefined
+  if (!target && agentId) {
+    // 指定的模型不存在/未启用：明确报错而不是悄悄换模型
+    throw new Error(`指定的执行模型不存在或未启用：${agentId}`)
+  }
+  if (!target) {
+    const tier = assessComplexity([{ role: 'user', content: prompt }]).tier
+    target = pickModel(enabled, tier).chosen?.model
+  }
+  if (!target) throw new Error('LLM 网关没有已启用的模型，请先在「LLM 网关」页添加')
+
+  const started = Date.now()
+  const output = await callUpstreamText(target, [{ role: 'user', content: prompt }], {
+    maxTokens: opts.maxTokens,
+    temperature: opts.temperature
+  })
+  return { output, modelId: target.id, modelName: target.name, latencyMs: Date.now() - started }
+}
+
+/** 用网关模型把任务描述拆解为子任务描述列表（LLM 拆解，非启发式） */
+export async function gatewayDecomposer(description: string): Promise<string[]> {
+  const prompt = [
+    '把下面的任务拆解为 2-5 个可以直接执行的子任务。',
+    '只输出一个 JSON 字符串数组，不要输出其他内容。',
+    '任务描述：',
+    description.slice(0, 4000)
+  ].join('\n')
+  const { output } = await gatewayTaskExecutor('', prompt, { temperature: 0.2 })
+  const match = output.match(/\[[\s\S]*\]/)
+  if (!match) throw new Error(`拆解结果不是 JSON 数组：${output.slice(0, 120)}`)
+  let arr: unknown
+  try {
+    arr = JSON.parse(match[0])
+  } catch {
+    throw new Error(`拆解结果 JSON 解析失败：${match[0].slice(0, 120)}`)
+  }
+  if (!Array.isArray(arr) || arr.length === 0 || arr.some((x) => typeof x !== 'string'))
+    throw new Error('拆解结果格式不符合预期')
+  return (arr as string[]).slice(0, 8)
+}
+
 export async function gwTestModel(
   id: string
 ): Promise<{ ok: boolean; error?: string; latencyMs: number }> {
@@ -108,42 +169,8 @@ export async function gwTestModel(
   const started = Date.now()
   try {
     const pingMessages = [{ role: 'user', content: 'ping，请只回复 pong' }]
-    const res =
-      m.kind === 'anthropic'
-        ? await fetch(anthropicMessagesUrl(m.baseURL), {
-            method: 'POST',
-            headers: {
-              'content-type': 'application/json',
-              'x-api-key': m.apiKey,
-              'anthropic-version': '2023-06-01'
-            },
-            body: JSON.stringify({
-              model: m.model,
-              messages: pingMessages,
-              max_tokens: 16
-            }),
-            signal: AbortSignal.timeout(30000)
-          })
-        : await fetch(openAiChatUrl(m.baseURL), {
-            method: 'POST',
-            headers: { 'content-type': 'application/json', authorization: `Bearer ${m.apiKey}` },
-            body: JSON.stringify({
-              model: m.model,
-              messages: pingMessages,
-              max_tokens: 16,
-              stream: false
-            }),
-            signal: AbortSignal.timeout(30000)
-          })
-    if (!res.ok) {
-      const body = await res.text()
-      return {
-        ok: false,
-        error: `HTTP ${res.status} ${body.slice(0, 200)}`,
-        latencyMs: Date.now() - started
-      }
-    }
-    return { ok: true, latencyMs: Date.now() - started }
+    const output = await callUpstreamText(m, pingMessages, { maxTokens: 16 })
+    return { ok: output.length > 0, latencyMs: Date.now() - started }
   } catch (err) {
     return {
       ok: false,

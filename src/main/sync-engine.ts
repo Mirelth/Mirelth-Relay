@@ -1,6 +1,7 @@
 /**
  * 同步引擎：处理团队仓库的 push/pull 和自动同步
  */
+import { mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { HOME, readJson } from './lib/fs'
 import { logger } from './lib/logger'
@@ -34,16 +35,19 @@ const SYNC_CONFIG_PATH = join(HOME, '.agent-tower', 'sync-config.json')
 /** 获取同步配置 */
 export function getSyncConfig(): SyncConfig {
   const config = readJson<SyncConfig>(SYNC_CONFIG_PATH)
-  return config || {
-    autoSync: false,
-    autoSyncInterval: 30 * 60 * 1000 // 30 分钟
-  }
+  return (
+    config || {
+      autoSync: false,
+      autoSyncInterval: 30 * 60 * 1000 // 30 分钟
+    }
+  )
 }
 
 /** 保存同步配置 */
 export function saveSyncConfig(config: SyncConfig): void {
   try {
-    require('fs').writeFileSync(SYNC_CONFIG_PATH, JSON.stringify(config, null, 2))
+    mkdirSync(join(SYNC_CONFIG_PATH, '..'), { recursive: true })
+    writeFileSync(SYNC_CONFIG_PATH, JSON.stringify(config, null, 2))
   } catch (err) {
     logger.error('sync-engine', `保存配置失败：${err}`)
   }

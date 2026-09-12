@@ -2,6 +2,7 @@
  * 信任度评分系统
  * 基于 Agent 历史表现动态调整信任度评分
  */
+import { mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { HOME, readJson } from './lib/fs'
 import { logger } from './lib/logger'
@@ -29,7 +30,8 @@ export function getTrustScores(): TrustScore[] {
 /** 保存信任度评分 */
 export function saveTrustScores(scores: TrustScore[]): void {
   try {
-    require('fs').writeFileSync(TRUST_SCORES_PATH, JSON.stringify(scores, null, 2))
+    mkdirSync(join(TRUST_SCORES_PATH, '..'), { recursive: true })
+    writeFileSync(TRUST_SCORES_PATH, JSON.stringify(scores, null, 2))
   } catch (err) {
     logger.error('trust', `保存信任度失败：${err}`)
   }
@@ -64,16 +66,23 @@ export function initAgentTrustScore(agentId: string): TrustScore {
 }
 
 /** 更新信任度（任务完成后调用） */
-export function updateTrustScore(
-  agentId: string,
-  success: boolean,
-  duration: number
-): TrustScore {
+export function updateTrustScore(agentId: string, success: boolean, duration: number): TrustScore {
   const scores = getTrustScores()
   let score = scores.find((s) => s.agentId === agentId)
 
   if (!score) {
-    score = initAgentTrustScore(agentId)
+    // 直接在当前数组上创建并push：initAgentTrustScore 会另存一份磁盘副本，
+    // 导致下面的统计变更被 saveTrustScores(scores) 覆盖丢失
+    score = {
+      agentId,
+      score: 0.5, // 默认中等信任度
+      totalTasks: 0,
+      successfulTasks: 0,
+      failedTasks: 0,
+      avgDuration: 0,
+      lastUpdated: Date.now()
+    }
+    scores.push(score)
   }
 
   // 更新统计数据
@@ -109,16 +118,18 @@ export function recordFrictionPoint(point: FrictionPoint): void {
   const recent = points.slice(-1000)
 
   try {
-    require('fs').writeFileSync(FRICTION_POINTS_PATH, JSON.stringify(recent, null, 2))
+    mkdirSync(join(FRICTION_POINTS_PATH, '..'), { recursive: true })
+    writeFileSync(FRICTION_POINTS_PATH, JSON.stringify(recent, null, 2))
   } catch (err) {
     logger.error('trust', `记录摩擦点失败：${err}`)
   }
 
-  // 降低相关 Agent 的信任度
-  const score = getAgentTrustScore(point.agentId)
+  // 降低相关 Agent 的信任度（在同一份读出的数组上改并保存）
+  const scores = getTrustScores()
+  const score = scores.find((s) => s.agentId === point.agentId)
   if (score) {
     score.score = Math.max(0, score.score - 0.05)
-    saveTrustScores(getTrustScores())
+    saveTrustScores(scores)
   }
 }
 

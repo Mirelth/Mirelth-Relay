@@ -15,7 +15,7 @@ interface QueueItem {
 
 let queue: QueueItem[] = []
 let queueStatus: QueueStatus = 'idle'
-let processingInterval: NodeJS.Timeout | null = null
+let pumping = false
 
 /** 获取队列状态 */
 export function getQueueStatus(): { status: QueueStatus; size: number } {
@@ -30,14 +30,11 @@ export function enqueue(taskId: string, priority = 0): void {
   const task = getTask(taskId)
   if (!task) return
 
-  // 为每个子任务创建队列项
-  task.subTasks.forEach((_, index) => {
-    queue.push({
-      taskId,
-      subTaskIndex: index,
-      priority,
-      addedAt: Date.now()
-    })
+  // 为每个未完成的子任务创建队列项
+  task.subTasks.forEach((st, index) => {
+    if (st.status === 'pending') {
+      queue.push({ taskId, subTaskIndex: index, priority, addedAt: Date.now() })
+    }
   })
 
   // 按优先级排序
@@ -45,93 +42,72 @@ export function enqueue(taskId: string, priority = 0): void {
 
   logger.info('queue', `任务已入队：${taskId}，队列大小：${queue.length}`)
 
-  // 如果队列空闲，开始处理
-  if (queueStatus === 'idle') {
-    startProcessing()
-  }
+  if (queueStatus === 'idle' || queueStatus === 'paused') startProcessing()
 }
 
 /** 开始处理队列 */
 function startProcessing(): void {
-  if (processingInterval) return
-
   queueStatus = 'running'
   logger.info('queue', '开始处理任务队列')
-
-  processingInterval = setInterval(() => {
-    processNext()
-  }, 1000) // 每秒检查一次
+  void pump()
 }
 
-/** 处理下一个任务 */
-async function processNext(): Promise<void> {
-  if (queue.length === 0) {
-    stopProcessing()
-    return
-  }
-
-  const item = queue.shift()
-  if (!item) return
-
-  const task = getTask(item.taskId)
-  if (!task || task.subTasks.length <= item.subTaskIndex) {
-    processNext()
-    return
-  }
-
-  const subTask = task.subTasks[item.subTaskIndex]
-  if (subTask.status !== 'pending') {
-    processNext()
-    return
-  }
-
+/** 串行消费队列：同一时刻只有一个子任务在执行（防重入） */
+async function pump(): Promise<void> {
+  if (pumping) return
+  pumping = true
   try {
-    logger.info('queue', `执行子任务：${subTask.id}`)
-    await executeSubTask(item.taskId, subTask.id)
+    while (queue.length > 0 && queueStatus === 'running') {
+      const item = queue.shift()
+      if (!item) break
 
-    // 检查任务是否完成
-    const updatedTask = getTask(item.taskId)
-    if (updatedTask) {
-      const allCompleted = updatedTask.subTasks.every((st) => st.status === 'completed')
-      const anyFailed = updatedTask.subTasks.some((st) => st.status === 'failed')
+      const task = getTask(item.taskId)
+      const subTask = task?.subTasks[item.subTaskIndex]
+      if (!task || !subTask || subTask.status !== 'pending') continue
 
-      if (allCompleted) {
-        updateTaskStatus(item.taskId, 'completed')
-        logger.info('queue', `任务已完成：${item.taskId}`)
-      } else if (anyFailed) {
-        updateTaskStatus(item.taskId, 'failed')
-        logger.warn('queue', `任务失败：${item.taskId}`)
+      try {
+        logger.info('queue', `执行子任务：${subTask.id}`)
+        await executeSubTask(item.taskId, subTask.id)
+
+        const updated = getTask(item.taskId)
+        if (updated && updated.subTasks.length > 0) {
+          const allCompleted = updated.subTasks.every((st) => st.status === 'completed')
+          const anyFailed = updated.subTasks.some((st) => st.status === 'failed')
+          if (allCompleted) {
+            updateTaskStatus(item.taskId, 'completed')
+            logger.info('queue', `任务已完成：${item.taskId}`)
+          } else if (anyFailed) {
+            updateTaskStatus(item.taskId, 'failed')
+            logger.warn('queue', `任务失败：${item.taskId}`)
+          }
+        }
+      } catch (err) {
+        logger.error('queue', `子任务执行失败：${err}`)
       }
     }
-  } catch (err) {
-    logger.error('queue', `子任务执行失败：${err}`)
+  } finally {
+    pumping = false
   }
-
-  // 继续处理下一个
-  processNext()
+  if (queue.length === 0) stopProcessing()
 }
 
 /** 停止处理 */
 function stopProcessing(): void {
-  if (processingInterval) {
-    clearInterval(processingInterval)
-    processingInterval = null
-  }
-  queueStatus = 'idle'
-  logger.info('queue', '任务队列已停止')
+  if (queueStatus !== 'paused') queueStatus = 'idle'
+  logger.info('queue', `任务队列${queueStatus === 'paused' ? '已暂停' : '已空闲'}`)
 }
 
-/** 暂停队列 */
+/** 暂停队列：当前正在执行的子任务会跑完，之后不再取新任务 */
 export function pauseQueue(): void {
-  stopProcessing()
   queueStatus = 'paused'
   logger.info('queue', '任务队列已暂停')
 }
 
 /** 恢复队列 */
 export function resumeQueue(): void {
-  if (queueStatus === 'paused' && queue.length > 0) {
-    startProcessing()
+  if (queueStatus === 'paused') {
+    if (queue.length > 0) startProcessing()
+    else queueStatus = 'idle'
   }
 }
 

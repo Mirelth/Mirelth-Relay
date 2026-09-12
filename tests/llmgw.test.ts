@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, describe, expect, it } from 'vitest'
 import * as http from 'http'
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
 import { join } from 'path'
@@ -158,18 +158,22 @@ describe('GwStore 配置存储', () => {
 describe('GatewayServer 端到端', () => {
   let upstream: http.Server
   let upstreamKind = 'openai'
+  let upstreamPort = 0
   const upstreamHits: { path: string; auth: string; body: Record<string, unknown> }[] = []
 
-  beforeAll(async () => {
+  // 每个用例独立上游：避免全局连接池跨用例复用导致的偶发 ECONNRESET
+  async function startUpstream(): Promise<number> {
     upstream = http.createServer((req, res) => {
       let body = ''
       req.on('data', (c) => (body += c))
       req.on('end', () => {
+        upstreamHits.length = 0
         upstreamHits.push({
           path: req.url || '',
           auth: String(req.headers['x-api-key'] ?? req.headers['authorization'] ?? ''),
           body: JSON.parse(body || '{}')
         })
+        res.setHeader('connection', 'close')
         if (upstreamKind === 'anthropic') {
           res.writeHead(200, { 'content-type': 'application/json' })
           res.end(
@@ -198,19 +202,24 @@ describe('GatewayServer 端到端', () => {
       })
     })
     await new Promise<void>((r) => upstream.listen(0, '127.0.0.1', r))
-  })
-  afterAll(async () => {
-    await new Promise<void>((r) => upstream.close(() => r()))
-  })
+    return (upstream.address() as { port: number }).port
+  }
 
-  const addr = (): number => (upstream.address() as { port: number }).port
+  async function stopUpstream(): Promise<void> {
+    await new Promise<void>((r) => upstream.close(() => r()))
+  }
+
+  afterEach(async () => {
+    await stopUpstream()
+  })
 
   it('OpenAI 兼容端到端：鉴权 → 复杂度路由 → 转发 → 返回', async () => {
+    upstreamPort = await startUpstream()
     const key = generateGatewayKey()
     const m = model({
       apiKey: 'up-key',
       model: 'test-model',
-      baseURL: `http://127.0.0.1:${addr()}`
+      baseURL: `http://127.0.0.1:${upstreamPort}`
     })
     const gwLogs: unknown[] = []
     const srv = new GatewayServer(
@@ -221,14 +230,22 @@ describe('GatewayServer 端到端', () => {
 
     const bad = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: 'Bearer wrong' },
+      headers: {
+        'content-type': 'application/json',
+        connection: 'close',
+        authorization: 'Bearer wrong'
+      },
       body: JSON.stringify({ messages: [{ role: 'user', content: 'hi' }] })
     })
     expect(bad.status).toBe(401)
 
     const res = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
+      headers: {
+        'content-type': 'application/json',
+        connection: 'close',
+        authorization: `Bearer ${key}`
+      },
       body: JSON.stringify({ messages: [{ role: 'user', content: '你好' }], max_tokens: 100 })
     })
     expect(res.status).toBe(200)
@@ -242,9 +259,11 @@ describe('GatewayServer 端到端', () => {
   })
 
   it('复杂任务路由到 heavy 档模型', async () => {
+    upstreamPort = await startUpstream()
+    upstreamPort = await startUpstream()
     const key = generateGatewayKey()
-    const light = model({ name: 'L', tier: 'light', baseURL: `http://127.0.0.1:${addr()}` })
-    const heavy = model({ name: 'H', tier: 'heavy', baseURL: `http://127.0.0.1:${addr()}` })
+    const light = model({ name: 'L', tier: 'light', baseURL: `http://127.0.0.1:${upstreamPort}` })
+    const heavy = model({ name: 'H', tier: 'heavy', baseURL: `http://127.0.0.1:${upstreamPort}` })
     const srv = new GatewayServer(
       () => ({ name: 'g', port: 0, key, autoStart: false, models: [light, heavy] }),
       () => {}
@@ -252,7 +271,11 @@ describe('GatewayServer 端到端', () => {
     const { port } = await srv.start()
     const res = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
+      headers: {
+        'content-type': 'application/json',
+        connection: 'close',
+        authorization: `Bearer ${key}`
+      },
       body: JSON.stringify({
         messages: [{ role: 'user', content: '请逐步分析、推导并证明这个定理，写出完整过程' }]
       })
@@ -263,9 +286,15 @@ describe('GatewayServer 端到端', () => {
   })
 
   it('anthropic 上游：请求转 Messages 格式、响应转回 OpenAI 格式', async () => {
+    upstreamPort = await startUpstream()
+    upstreamPort = await startUpstream()
     upstreamKind = 'anthropic'
     const key = generateGatewayKey()
-    const m = model({ kind: 'anthropic', model: 'claude-x', baseURL: `http://127.0.0.1:${addr()}` })
+    const m = model({
+      kind: 'anthropic',
+      model: 'claude-x',
+      baseURL: `http://127.0.0.1:${upstreamPort}`
+    })
     const srv = new GatewayServer(
       () => ({ name: 'g', port: 0, key, autoStart: false, models: [m] }),
       () => {}
@@ -273,7 +302,7 @@ describe('GatewayServer 端到端', () => {
     const { port } = await srv.start()
     const res = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-api-key': key },
+      headers: { 'content-type': 'application/json', connection: 'close', 'x-api-key': key },
       body: JSON.stringify({
         messages: [
           { role: 'system', content: '你是助手' },
@@ -300,8 +329,10 @@ describe('GatewayServer 端到端', () => {
   })
 
   it('stream:true 返回 SSE（role/content/stop + [DONE]）', async () => {
+    upstreamPort = await startUpstream()
+    upstreamPort = await startUpstream()
     const key = generateGatewayKey()
-    const m = model({ baseURL: `http://127.0.0.1:${addr()}` })
+    const m = model({ baseURL: `http://127.0.0.1:${upstreamPort}` })
     const srv = new GatewayServer(
       () => ({ name: 'g', port: 0, key, autoStart: false, models: [m] }),
       () => {}
@@ -309,7 +340,11 @@ describe('GatewayServer 端到端', () => {
     const { port } = await srv.start()
     const res = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
+      headers: {
+        'content-type': 'application/json',
+        connection: 'close',
+        authorization: `Bearer ${key}`
+      },
       body: JSON.stringify({ messages: [{ role: 'user', content: 'hi' }], stream: true })
     })
     expect(res.headers.get('content-type')).toContain('text/event-stream')
@@ -321,8 +356,9 @@ describe('GatewayServer 端到端', () => {
   })
 
   it('透传 stop/top_p/n/response_format/tools/tool_choice；只传 max_completion_tokens 时按原名转发', async () => {
+    upstreamPort = await startUpstream()
     const key = generateGatewayKey()
-    const m = model({ baseURL: `http://127.0.0.1:${addr()}` })
+    const m = model({ baseURL: `http://127.0.0.1:${upstreamPort}` })
     const srv = new GatewayServer(
       () => ({ name: 'g', port: 0, key, autoStart: false, models: [m] }),
       () => {}
@@ -330,7 +366,11 @@ describe('GatewayServer 端到端', () => {
     const { port } = await srv.start()
     const res = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
+      headers: {
+        'content-type': 'application/json',
+        connection: 'close',
+        authorization: `Bearer ${key}`
+      },
       body: JSON.stringify({
         messages: [{ role: 'user', content: 'hi' }],
         max_completion_tokens: 500,
@@ -358,7 +398,7 @@ describe('GatewayServer 端到端', () => {
   it('anthropic 上游收到 tools 时返回 400 明确报错而不是静默丢弃', async () => {
     upstreamKind = 'anthropic'
     const key = generateGatewayKey()
-    const m = model({ kind: 'anthropic', baseURL: `http://127.0.0.1:${addr()}` })
+    const m = model({ kind: 'anthropic', baseURL: `http://127.0.0.1:${upstreamPort}` })
     const srv = new GatewayServer(
       () => ({ name: 'g', port: 0, key, autoStart: false, models: [m] }),
       () => {}
@@ -367,7 +407,11 @@ describe('GatewayServer 端到端', () => {
     const hitsBefore = upstreamHits.length
     const res = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
+      headers: {
+        'content-type': 'application/json',
+        connection: 'close',
+        authorization: `Bearer ${key}`
+      },
       body: JSON.stringify({
         messages: [{ role: 'user', content: 'hi' }],
         tools: [{ type: 'function', function: { name: 'f', parameters: {} } }]
@@ -381,8 +425,9 @@ describe('GatewayServer 端到端', () => {
   })
 
   it('max_completion_tokens 参与复杂度评估（触发长产出信号）', async () => {
+    upstreamPort = await startUpstream()
     const key = generateGatewayKey()
-    const m = model({ baseURL: `http://127.0.0.1:${addr()}` })
+    const m = model({ baseURL: `http://127.0.0.1:${upstreamPort}` })
     const logs: { signals: string[] }[] = []
     const srv = new GatewayServer(
       () => ({ name: 'g', port: 0, key, autoStart: false, models: [m] }),
@@ -391,7 +436,11 @@ describe('GatewayServer 端到端', () => {
     const { port } = await srv.start()
     await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
+      headers: {
+        'content-type': 'application/json',
+        connection: 'close',
+        authorization: `Bearer ${key}`
+      },
       body: JSON.stringify({
         messages: [{ role: 'user', content: 'hi' }],
         max_completion_tokens: 10000
@@ -402,13 +451,15 @@ describe('GatewayServer 端到端', () => {
   })
 
   it('端口被占自动顺延；GET /v1/models 列出已启用模型', async () => {
+    upstreamPort = await startUpstream()
+    upstreamPort = await startUpstream()
     const key = generateGatewayKey()
     const blocker = http.createServer()
     await new Promise<void>((r) => blocker.listen(0, '127.0.0.1', r))
     const takenPort = (blocker.address() as { port: number }).port
 
-    const m = model({ enabled: true, baseURL: `http://127.0.0.1:${addr()}` })
-    const off = model({ enabled: false, baseURL: `http://127.0.0.1:${addr()}` })
+    const m = model({ enabled: true, baseURL: `http://127.0.0.1:${upstreamPort}` })
+    const off = model({ enabled: false, baseURL: `http://127.0.0.1:${upstreamPort}` })
     const srv = new GatewayServer(
       () => ({ name: 'g', port: takenPort, key, autoStart: false, models: [m, off] }),
       () => {}
