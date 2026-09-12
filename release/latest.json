@@ -1,10 +1,10 @@
 {
-  "version": "1.1.1",
-  "notes": "v1.1.1 收口批次：\n\n- 引入 i18next 框架（Layout/导航/自动刷新/更新弹窗中英双语化）\n- 主进程结构化日志（logger.ts）+ 进程级兜底（unhandledRejection/uncaughtException）\n- 扫描器测试覆盖（21 个新单测，含 opencode/qoder/codebuddy/trae/agnes/dsh/types）\n- UI 快照回归测试（Layout 侧边栏 4 个用例守住 chrome）\n- 代码签名占位（electron-builder.yml 留好 CSC_LINK / Apple ID 注入点）\n- CI tag_push 三平台（mac/win/linux）并行打包，本地签名 + release 流程",
-  "publishedAt": "2026-09-03",
+  "version": "1.2.0",
+  "notes": "v1.2.0 功能批次：\n\n- LLM 聚合网关：统一访问链接与 API Key，按任务复杂度（输入规模/产出长度/推理信号）自动路由到轻量/标准/旗舰档模型，OpenAI 兼容客户端即改即用\n- Anthropic 兼容上游双向格式转换、SSE 流式模拟、tools/stop/top_p 等参数透传、CORS 支持\n- 仓库安全审查：扫描本地代码仓库的明文密钥、已提交 .env/私钥、.gitignore 覆盖情况，全部脱敏展示\n- 团队仓库/任务队列/约束规则等基础模块\n- 渲染层 CSP 收紧并放开本机回环；137 项单测全过，typecheck 全绿",
+  "publishedAt": "2026-09-12",
   "downloads": {
-    "macArm": "https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.1.1/agent-tower-1.1.1-arm64.dmg",
-    "macIntel": "https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.1.1/agent-tower-1.1.1-x64.dmg",
-    "win": "https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.1.1/agent-tower-1.1.1-setup.exe"
+    "macArm": "https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.2.0/agent-tower-1.2.0-arm64.dmg",
+    "macIntel": "https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.2.0/agent-tower-1.2.0-x64.dmg",
+    "win": "https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.2.0/agent-tower-1.2.0-setup.exe"
   }
 }
