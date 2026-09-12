@@ -4,16 +4,16 @@
 
 ## 下载
 
-最新发布：**v1.1.1**（[发行版页面](https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases)）
+最新发布：**v1.2.0**（[发行版页面](https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases)）
 
 | 平台 | 安装包 |
 |---|---|
-| macOS（Apple Silicon） | [agent-tower-1.1.1-arm64.dmg](https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.1.1/agent-tower-1.1.1-arm64.dmg) |
-| macOS（Intel） | [agent-tower-1.1.1-x64.dmg](https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.1.1/agent-tower-1.1.1-x64.dmg) |
-| Windows 10/11（x64） | [agent-tower-1.1.1-setup.exe](https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.1.1/agent-tower-1.1.1-setup.exe) |
-| Linux（AppImage） | [agent-tower-1.1.1.AppImage](https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.1.1/agent-tower-1.1.1.AppImage) |
-| Linux（deb） | [agent-tower_1.1.1_amd64.deb](https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.1.1/agent-tower_1.1.1_amd64.deb) |
-| Linux（snap） | [agent-tower_1.1.1_amd64.snap](https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.1.1/agent-tower_1.1.1_amd64.snap) |
+| macOS（Apple Silicon） | [agent-tower-1.2.0-arm64.dmg](https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.2.0/agent-tower-1.2.0-arm64.dmg) |
+| macOS（Intel） | [agent-tower-1.2.0-x64.dmg](https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.2.0/agent-tower-1.2.0-x64.dmg) |
+| Windows 10/11（x64） | [agent-tower-1.2.0-setup.exe](https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.2.0/agent-tower-1.2.0-setup.exe) |
+| Linux（AppImage） | [agent-tower-1.2.0.AppImage](https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.2.0/agent-tower-1.2.0.AppImage) |
+| Linux（deb） | [agent-tower_1.2.0_amd64.deb](https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.2.0/agent-tower_1.2.0_amd64.deb) |
+| Linux（snap） | [agent-tower_1.2.0_amd64.snap](https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.2.0/agent-tower_1.2.0_amd64.snap) |
 
 > 安装包未做代码签名：macOS 首次打开如遇拦截，右键 App 选「打开」或执行 `xattr -cr /Applications/AgentTower.app`；Windows 如遇 SmartScreen 提示，点「更多信息 → 仍要执行」。
 
