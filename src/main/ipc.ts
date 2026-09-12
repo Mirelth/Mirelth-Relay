@@ -11,7 +11,11 @@ import type {
   McpServer,
   PriceConfig,
   RefreshOptions,
+  RepoSecurityScanResult,
   SecurityScanResult,
+  GwGatewayView,
+  GwRequestLogEntry,
+  GwSimulationResult,
   SkillInfo,
   TokenDimension,
   TokenDetailQuery,
@@ -31,10 +35,75 @@ import { ModelStore, toView } from './models/store'
 import { aggregateCost, DEFAULT_PRICES, PricingStore } from './pricing'
 import { checkForUpdate } from './updater'
 import { collectAgentFiles, runSecurityScan } from './security'
+import { runRepoSecurityScan } from './repo-security'
+import {
+  gwView,
+  gwUpdate,
+  gwStart,
+  gwStop,
+  gwRegenerateKey,
+  gwRevealKey,
+  gwLogs,
+  gwSimulate,
+  gwTestModel
+} from './llmgw'
 import { compareAndNotify, notifyUpdateAvailable } from './alerts'
 import { join } from 'path'
 import { writeFileSync } from 'fs'
 import type { ApplyOptions, ModelProfile } from '@shared/types'
+import type { Task, AgentConstraint } from '@shared/task-types'
+import {
+  getRepoStatus,
+  addRemote,
+  getSkillContent,
+  getRuleContent,
+  saveSkill,
+  saveRule
+} from './team-repo'
+import {
+  getSyncConfig,
+  saveSyncConfig,
+  initSync,
+  syncPush,
+  syncPull,
+  getTeamSkillsSummary,
+  getTeamRulesSummary
+} from './sync-engine'
+import {
+  getTasks,
+  getTask,
+  createTask,
+  updateTaskStatus,
+  decomposeTask,
+  assignSubTask,
+  executeSubTask,
+  monitorExecution,
+  cancelTask,
+  getReadyTasks
+} from './execution-engine'
+import {
+  getQueueStatus,
+  enqueue,
+  pauseQueue,
+  resumeQueue,
+  clearQueue,
+  getQueuedTaskIds
+} from './task-queue'
+import {
+  getConstraints,
+  addConstraint,
+  updateConstraint,
+  deleteConstraint,
+  getAgentConstraints,
+  validateConstraints
+} from './constraints'
+import {
+  getTrustScores,
+  getAgentTrustScore,
+  updateTrustScore,
+  getFrictionPointStats,
+  rankAgentsByTrust
+} from './trust-scoring'
 
 function timeRangeToEpoch(query?: TokenDetailQuery): { since?: number; until?: number } {
   return {
@@ -276,6 +345,41 @@ export function registerIpc(): void {
 
   ipcMain.handle('models:appliers', () => listAppliers())
 
+  // 拉取提供方可用模型目录：openai 兼容走 {base}/models，anthropic 兼容补 /v1 前缀
+  ipcMain.handle(
+    'models:catalog',
+    async (_e, baseURL: string, apiKey: string, kind: ModelProfile['kind']) => {
+      try {
+        const base = baseURL.trim().replace(/\/+$/, '')
+        const url =
+          kind === 'anthropic' && !/\/v\d+$/.test(base) ? `${base}/v1/models` : `${base}/models`
+        const headers: Record<string, string> =
+          kind === 'anthropic'
+            ? { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' }
+            : apiKey
+              ? { Authorization: `Bearer ${apiKey}` }
+              : {}
+        const res = await fetch(url, { headers, signal: AbortSignal.timeout(15000) })
+        if (!res.ok) {
+          return { models: [], error: `HTTP ${res.status} ${res.statusText}` }
+        }
+        const json: unknown = await res.json()
+        const rows = Array.isArray(json) ? json : (json as { data?: unknown[] }).data
+        const models = Array.isArray(rows)
+          ? rows
+              .map((m) => {
+                const id = typeof m === 'string' ? m : (m as { id?: unknown })?.id
+                return typeof id === 'string' ? id : ''
+              })
+              .filter(Boolean)
+          : []
+        return { models }
+      } catch (err) {
+        return { models: [], error: err instanceof Error ? err.message : String(err) }
+      }
+    }
+  )
+
   ipcMain.handle(
     'models:apply',
     (_e, profileId: string, agentIds: string[], options?: ApplyOptions) => {
@@ -367,6 +471,36 @@ export function registerIpc(): void {
     return runSecurityScan(files)
   })
 
+  ipcMain.handle('security:pickRepo', async (): Promise<string | null> => {
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null
+    const r = win
+      ? await dialog.showOpenDialog(win, { properties: ['openDirectory'] })
+      : await dialog.showOpenDialog({ properties: ['openDirectory'] })
+    return r.canceled || !r.filePaths[0] ? null : r.filePaths[0]
+  })
+
+  ipcMain.handle('security:repoScan', (_e, repoDir: string): Promise<RepoSecurityScanResult> => {
+    if (typeof repoDir !== 'string' || repoDir.trim() === '') throw new Error('缺少仓库路径')
+    return runRepoSecurityScan(repoDir)
+  })
+
+  // ---------- LLM 聚合网关 ----------
+
+  ipcMain.handle('gw:get', (): GwGatewayView => gwView())
+  ipcMain.handle(
+    'gw:update',
+    async (_e, patch): Promise<GwGatewayView> => await gwUpdate(patch ?? {})
+  )
+  ipcMain.handle('gw:start', async (): Promise<GwGatewayView> => await gwStart())
+  ipcMain.handle('gw:stop', async (): Promise<GwGatewayView> => await gwStop())
+  ipcMain.handle('gw:regenKey', (): GwGatewayView => gwRegenerateKey())
+  ipcMain.handle('gw:revealKey', (): string => gwRevealKey())
+  ipcMain.handle('gw:logs', (): GwRequestLogEntry[] => gwLogs())
+  ipcMain.handle('gw:simulate', (_e, text: string, maxTokens?: number): GwSimulationResult =>
+    gwSimulate(typeof text === 'string' ? text : '', Number(maxTokens) || 0)
+  )
+  ipcMain.handle('gw:testModel', async (_e, id: string) => await gwTestModel(String(id)))
+
   // ---------- 导出 ----------
 
   ipcMain.handle('io:export', async (_e, options: ExportSaveOptions): Promise<ExportSaveResult> => {
@@ -410,4 +544,150 @@ export function registerIpc(): void {
     if (!/^https?:\/\//i.test(url)) throw new Error('仅允许打开 http/https 链接')
     void shell.openExternal(url)
   })
+
+  // ---------- 团队仓库（配置层） ----------
+
+  ipcMain.handle('teamRepo:init', () => initSync())
+
+  ipcMain.handle('teamRepo:status', () => getRepoStatus())
+
+  ipcMain.handle('teamRepo:addRemote', (_e, url: string) => addRemote(url))
+
+  ipcMain.handle('teamRepo:push', () => syncPush())
+
+  ipcMain.handle('teamRepo:pull', () => syncPull())
+
+  ipcMain.handle('teamRepo:skills', () => getTeamSkillsSummary())
+
+  ipcMain.handle('teamRepo:rules', () => getTeamRulesSummary())
+
+  ipcMain.handle('teamRepo:getSkill', (_e, name: string) => getSkillContent(name))
+
+  ipcMain.handle('teamRepo:getRule', (_e, name: string) => getRuleContent(name))
+
+  ipcMain.handle(
+    'teamRepo:saveSkill',
+    (_e, name: string, content: { skillMd: string; prompt?: string; examples?: string }) =>
+      saveSkill(name, content)
+  )
+
+  ipcMain.handle('teamRepo:saveRule', (_e, name: string, content: string) =>
+    saveRule(name, content)
+  )
+
+  ipcMain.handle('teamRepo:syncConfig', () => getSyncConfig())
+
+  ipcMain.handle('teamRepo:saveSyncConfig', (_e, config) => {
+    saveSyncConfig(config)
+    return { success: true }
+  })
+
+  // ---------- 任务管理（执行层） ----------
+
+  ipcMain.handle('tasks:list', (): Task[] => getTasks())
+
+  ipcMain.handle('tasks:get', (_e, taskId: string): Task | null => getTask(taskId))
+
+  ipcMain.handle(
+    'tasks:create',
+    (
+      _e,
+      input: {
+        title: string
+        description: string
+        mode: string
+        agents: string[]
+        dependencies: string[]
+      }
+    ) =>
+      createTask(
+        input.title,
+        input.description,
+        input.mode as any,
+        input.agents,
+        input.dependencies
+      )
+  )
+
+  ipcMain.handle('tasks:updateStatus', (_e, taskId: string, status: string) =>
+    updateTaskStatus(taskId, status as any)
+  )
+
+  ipcMain.handle('tasks:decompose', async (_e, taskId: string) => await decomposeTask(taskId))
+
+  ipcMain.handle('tasks:assignSubTask', (_e, taskId: string, subTaskId: string, agentId: string) =>
+    assignSubTask(taskId, subTaskId, agentId)
+  )
+
+  ipcMain.handle(
+    'tasks:executeSubTask',
+    async (_e, taskId: string, subTaskId: string) => await executeSubTask(taskId, subTaskId)
+  )
+
+  ipcMain.handle('tasks:monitor', (_e, taskId: string): Task | null => monitorExecution(taskId))
+
+  ipcMain.handle('tasks:cancel', (_e, taskId: string) => cancelTask(taskId))
+
+  ipcMain.handle('tasks:ready', (): Task[] => getReadyTasks())
+
+  // ---------- 任务队列 ----------
+
+  ipcMain.handle('queue:status', () => getQueueStatus())
+
+  ipcMain.handle('queue:enqueue', (_e, taskId: string, priority: number) =>
+    enqueue(taskId, priority)
+  )
+
+  ipcMain.handle('queue:pause', () => {
+    pauseQueue()
+    return { success: true }
+  })
+
+  ipcMain.handle('queue:resume', () => {
+    resumeQueue()
+    return { success: true }
+  })
+
+  ipcMain.handle('queue:clear', () => {
+    clearQueue()
+    return { success: true }
+  })
+
+  ipcMain.handle('queue:taskIds', (): string[] => getQueuedTaskIds())
+
+  // ---------- 约束管理 ----------
+
+  ipcMain.handle('constraints:list', (): AgentConstraint[] => getConstraints())
+
+  ipcMain.handle('constraints:add', (_e, constraint: Omit<AgentConstraint, 'id' | 'createdAt'>) =>
+    addConstraint(constraint)
+  )
+
+  ipcMain.handle('constraints:update', (_e, id: string, updates: Partial<AgentConstraint>) =>
+    updateConstraint(id, updates)
+  )
+
+  ipcMain.handle('constraints:delete', (_e, id: string) => deleteConstraint(id))
+
+  ipcMain.handle('constraints:agent', (_e, agentId: string): AgentConstraint[] =>
+    getAgentConstraints(agentId)
+  )
+
+  ipcMain.handle('constraints:validate', (_e, agentId: string, context: any) =>
+    validateConstraints(agentId, context)
+  )
+
+  // ---------- 信任度评分 ----------
+
+  ipcMain.handle('trust:scores', () => getTrustScores())
+
+  ipcMain.handle('trust:agent', (_e, agentId: string) => getAgentTrustScore(agentId))
+
+  ipcMain.handle('trust:update', (_e, agentId: string, success: boolean, duration: number) =>
+    updateTrustScore(agentId, success, duration)
+  )
+
+  ipcMain.handle('trust:frictionStats', (_e, agentId?: string) => getFrictionPointStats(agentId))
+
+  ipcMain.handle('trust:rank', (_e, agentIds: string[]) => rankAgentsByTrust(agentIds))
 }

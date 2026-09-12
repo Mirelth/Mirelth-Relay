@@ -12,6 +12,10 @@ const Tokens = lazy(() => import('./pages/Tokens'))
 const Models = lazy(() => import('./pages/Models'))
 const Hooks = lazy(() => import('./pages/Hooks'))
 const Security = lazy(() => import('./pages/Security'))
+const TeamRepo = lazy(() => import('./pages/TeamRepo'))
+const Rules = lazy(() => import('./pages/Rules'))
+const Tasks = lazy(() => import('./pages/Tasks'))
+const Gateway = lazy(() => import('./pages/Gateway'))
 
 const PageFallback = (): React.JSX.Element => {
   const { t } = useTranslation()
@@ -44,8 +48,12 @@ function App(): React.JSX.Element {
             <Route path="/git" element={<GitCommits />} />
             <Route path="/tokens" element={<Tokens />} />
             <Route path="/models" element={<Models />} />
+            <Route path="/gateway" element={<Gateway />} />
             <Route path="/hooks" element={<Hooks />} />
             <Route path="/security" element={<Security />} />
+            <Route path="/team-repo" element={<TeamRepo />} />
+            <Route path="/rules" element={<Rules />} />
+            <Route path="/tasks" element={<Tasks />} />
           </Route>
         </Routes>
       </Suspense>

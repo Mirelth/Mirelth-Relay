@@ -16,8 +16,10 @@ import {
   RefreshCw,
   Sun,
   Wrench,
-  X
-} from 'lucide-react'
+  X,
+  FolderGit,
+  Scale,
+  ListTodo, Waypoints } from 'lucide-react'
 import type { UpdateInfo } from '@shared/types'
 import { relativeTime } from '@renderer/lib/format'
 import { ThemeProvider, useTheme } from './Theme'
@@ -51,8 +53,12 @@ const NAV = [
   { to: '/git', key: 'nav.git', icon: GitCommitHorizontal },
   { to: '/tokens', key: 'nav.tokens', icon: Layers },
   { to: '/models', key: 'nav.models', icon: Cpu },
+  { to: '/gateway', key: 'nav.gateway', icon: Waypoints },
   { to: '/hooks', key: 'nav.hooks', icon: Webhook },
-  { to: '/security', key: 'nav.security', icon: ShieldCheck }
+  { to: '/security', key: 'nav.security', icon: ShieldCheck },
+  { to: '/team-repo', key: 'nav.teamRepo', icon: FolderGit },
+  { to: '/rules', key: 'nav.rules', icon: Scale },
+  { to: '/tasks', key: 'nav.tasks', icon: ListTodo }
 ]
 
 const RELEASES_PAGE = 'https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases'

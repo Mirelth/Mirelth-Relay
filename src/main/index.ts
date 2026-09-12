@@ -3,6 +3,7 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { registerIpc } from './ipc'
+import { initGateway } from './llmgw'
 import { refreshAndRecord, refreshAll } from './engine'
 import { checkAllMcp } from './mcp-health'
 import { getStore } from './cache'
@@ -86,6 +87,7 @@ app.whenReady().then(() => {
 
   registerIpc()
   alerts.setWindowFocusHandler(focusWindow)
+  void initGateway()
 
   createWindow()
 
@@ -146,12 +148,25 @@ app.whenReady().then(() => {
         }
       }
       const captureAll = async (suffix: string): Promise<void> => {
-        for (const route of routes) {
+        // AGENTMGR_SHOT_ROUTES：只截指定路由；AGENTMGR_SHOT_CLICK：截图前点击含该文本的按钮（弹窗交互态）
+        // AGENTMGR_SHOT_JS：截图前执行的页面交互脚本（可返回 Promise，用于多步交互态）
+        const shotRoutes = (process.env.AGENTMGR_SHOT_ROUTES || '').split(',').filter(Boolean)
+        const shotClick = process.env.AGENTMGR_SHOT_CLICK
+        const shotJs = process.env.AGENTMGR_SHOT_JS
+        for (const route of shotRoutes.length ? shotRoutes : routes) {
           await navigate(route)
           // /git 需要跨多个仓库聚合 git log，给更长渲染等待
           await sleep(route === '/git' ? 15000 : 4000)
+          if (shotClick) {
+            await clickByText(shotClick)
+            await sleep(1500)
+          }
+          if (shotJs) {
+            await wc.executeJavaScript(shotJs)
+            await sleep(1000)
+          }
           const image = await wc.capturePage()
-          const name = (route === '/' ? 'dashboard' : route.slice(1)) + suffix
+          const name = ((route === '/' ? 'dashboard' : route.slice(1)) + (shotClick ? '-click' : '')) + suffix
           require('fs').writeFileSync(join(shotDir, `${name}.png`), image.toPNG())
         }
       }

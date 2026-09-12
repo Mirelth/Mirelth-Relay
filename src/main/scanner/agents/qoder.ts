@@ -1,7 +1,10 @@
 import { join, basename } from 'path'
 import type { ConfigFileInfo, DataDirInfo } from '@shared/types'
-import { HOME, dirSize, exists, isDir, listDirs, readAppBundleVersion, readJson, redact } from '../../lib/fs'
+import { HOME, dirSize, exists, isDir, listDirs, listEntries, readAppBundleVersion, readJson, readText, redact } from '../../lib/fs'
+import { logger } from '../../lib/logger'
+import { DEFAULT_RATE_USD_CNY } from '../../pricing'
 import { appPaths, emptySnapshot, type Scanner, type ScannerMeta } from '../types'
+import type { UsageRecord } from '../types'
 
 const meta: ScannerMeta = {
   id: 'qoder',
@@ -83,14 +86,18 @@ export const qoderScanner: Scanner = {
     }
 
     // 项目目录：projects/-Users-new-... 目录名反解为路径
-    for (const p of listDirs(join(home, 'projects'))) {
+    const projectsDir = join(home, 'projects')
+    for (const p of listDirs(projectsDir)) {
       const decoded = decodeQoderProjectDir(basename(p))
       if (decoded) snap.projectDirs.push(decoded)
     }
 
+    // 用量：解析 projects 下的 JSONL 会话文件，提取 credits 消耗
+    snap.usage = parseQoderUsage(projectsDir)
+
     snap.info.skillCount = snap.skills.length
     snap.info.mcpCount = 0
-    snap.info.hasUsage = false
+    snap.info.hasUsage = snap.usage.length > 0
     snap.info.projectCount = snap.projectDirs.length
     return snap
   }
@@ -106,4 +113,75 @@ function decodeQoderProjectDir(name: string): string | null {
   // 简化处理：把 '-Users-new-...' 还原为 '/Users/new/...'，空格类目录无法可靠恢复
   candidate = '/' + parts.join('/')
   return candidate
+}
+
+/** Qoder 模型上下文窗口（用于从 context_usage_ratio 估算 input tokens） */
+const QODER_CONTEXT_WINDOW = 200_000
+
+/**
+ * 解析 Qoder JSONL 会话文件，提取用量数据。
+ * Qoder 不直接上报 token 数，但可通过 context_usage_ratio × 上下文窗口 估算 input tokens，
+ * 从 assistant 消息 content 长度估算 output tokens。同时记录 credits 用于成本估算。
+ */
+function parseQoderUsage(projectsDir: string): UsageRecord[] {
+  const records: UsageRecord[] = []
+  if (!exists(projectsDir)) return records
+
+  for (const projectDir of listDirs(projectsDir)) {
+    for (const file of listEntries(projectDir)) {
+      if (!file.endsWith('.jsonl')) continue
+      const text = readText(join(projectDir, file))
+      if (!text) continue
+      for (const line of text.split('\n')) {
+        if (!line.includes('"usage"')) continue
+        try {
+          const obj = JSON.parse(line) as {
+            type?: string
+            timestamp?: string
+            message?: {
+              model?: string
+              content?: unknown[]
+              usage?: {
+                credits?: number
+                context_usage_ratio?: number
+              }
+            }
+          }
+          if (obj.type !== 'assistant') continue
+          const u = obj.message?.usage
+          if (!u || !u.credits || u.credits <= 0) continue
+          const ts = obj.timestamp ? Date.parse(obj.timestamp) : 0
+          if (!ts) continue
+
+          const ratio = u.context_usage_ratio ?? 0
+          const estInputTokens = Math.round(ratio * QODER_CONTEXT_WINDOW)
+
+          let estOutputTokens = 100
+          if (obj.message?.content && Array.isArray(obj.message.content)) {
+            let chars = 0
+            for (const block of obj.message.content) {
+              chars += JSON.stringify(block).length
+            }
+            estOutputTokens = Math.max(100, Math.round(chars / 3))
+          }
+
+          records.push({
+            ts,
+            model: obj.message?.model || 'unknown',
+            inputTokens: estInputTokens,
+            outputTokens: estOutputTokens,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+            reasoningTokens: 0,
+            requests: 1,
+            costUsd: u.credits / DEFAULT_RATE_USD_CNY
+          })
+        } catch {
+          // JSONL 行解析失败，跳过
+        }
+      }
+    }
+  }
+  logger.debug('qoder', `解析到 ${records.length} 条用量记录`)
+  return records
 }

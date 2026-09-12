@@ -395,6 +395,106 @@ export interface SecurityScanResult {
   checkedPaths: number
 }
 
+// ---------- 仓库安全审查 ----------
+
+export interface RepoSecurityFinding {
+  id: string
+  severity: 'high' | 'medium' | 'info'
+  category: 'plaintext-secret' | 'committed-env' | 'gitignore-missing'
+  /** 相对仓库根的路径 */
+  path: string
+  line?: number
+  kind: string
+  /** 已脱敏的片段（永不包含完整密钥） */
+  snippet: string
+  advice: string
+}
+
+export interface RepoSecurityScanResult {
+  at: string
+  /** 仓库绝对路径 */
+  repo: string
+  isGitRepo: boolean
+  /** 实际做了内容扫描的文本文件数 */
+  scannedFiles: number
+  /** 文件数超上限、未扫全 */
+  truncated: boolean
+  findings: RepoSecurityFinding[]
+}
+
+// ---------- LLM 聚合网关 ----------
+
+/** 模型能力档位：路由时按任务复杂度匹配 */
+export type GwModelTier = 'light' | 'standard' | 'heavy'
+
+export interface GwModelConfig {
+  id: string
+  /** 展示名，如 "DeepSeek 快速档" */
+  name: string
+  kind: 'anthropic' | 'openai-compatible'
+  baseURL: string
+  apiKey: string
+  /** 上游请求时的 model id */
+  model: string
+  tier: GwModelTier
+  enabled: boolean
+  updatedAt: string
+}
+
+/** 不带回显完整 apiKey 的视图 */
+export type GwModelView = Omit<GwModelConfig, 'apiKey'> & {
+  apiKeyMasked: string
+  hasApiKey: boolean
+}
+
+/** 网关本地持久化配置（含明文密钥，仅主进程使用） */
+export interface GwGatewayConfig {
+  name: string
+  port: number
+  key: string
+  autoStart: boolean
+  models: GwModelConfig[]
+}
+
+export interface GwGatewayView {
+  name: string
+  port: number
+  running: boolean
+  /** 实际监听的访问链接（启动后才有意义） */
+  endpoint: string
+  keyMasked: string
+  hasKey: boolean
+  autoStart: boolean
+  models: GwModelView[]
+}
+
+export interface GwRequestLogEntry {
+  id: number
+  at: string
+  modelId: string
+  /** 目标模型展示名 */
+  modelName: string
+  tier: GwModelTier
+  /** 复杂度得分 0-100 */
+  complexity: number
+  /** 触发的评估信号，如 "推理关键词"、"长输入 12.3k 字符" */
+  signals: string[]
+  chars: number
+  latencyMs: number
+  status: 'ok' | 'error' | 'no-model'
+  error?: string
+}
+
+export interface GwSimulationResult {
+  complexity: number
+  tier: GwModelTier
+  signals: string[]
+  chars: number
+  chosen?: { id: string; name: string; model: string; tier: GwModelTier }
+  /** 路由决策说明 */
+  reason: string
+}
+
 // ---------- 导出 ----------
 
 export interface ExportSaveOptions {
@@ -436,6 +536,12 @@ export interface ApiClient {
     agentIds: string[],
     options?: ApplyOptions
   ): Promise<ApplyResult[]>
+  /** 从提供方 API 拉取可用模型目录（GET {baseURL}/models） */
+  fetchModelCatalog(
+    baseURL: string,
+    apiKey: string,
+    kind: ModelProfile['kind']
+  ): Promise<{ models: string[]; error?: string }>
   listHooks(): Promise<HookEntry[]>
   listHookTargets(): Promise<HooksTarget[]>
   createHook(input: HookCreateInput): Promise<{ backupPath?: string }>
@@ -447,10 +553,73 @@ export interface ApiClient {
   savePricing(config: PriceConfig): Promise<void>
   resetPricing(): Promise<void>
   securityScan(): Promise<SecurityScanResult>
+  /** 弹系统目录选择框，取消返回 null */
+  pickRepoDir(): Promise<string | null>
+  repoSecurityScan(repoDir: string): Promise<RepoSecurityScanResult>
+  // LLM 聚合网关
+  gwGet(): Promise<GwGatewayView>
+  gwUpdate(patch: {
+    name?: string
+    port?: number
+    autoStart?: boolean
+    models?: GwModelConfig[]
+  }): Promise<GwGatewayView>
+  gwStart(): Promise<GwGatewayView>
+  gwStop(): Promise<GwGatewayView>
+  gwRegenerateKey(): Promise<GwGatewayView>
+  gwRevealKey(): Promise<string>
+  gwLogs(): Promise<GwRequestLogEntry[]>
+  gwSimulate(text: string, maxTokens?: number): Promise<GwSimulationResult>
+  gwTestModel(id: string): Promise<{ ok: boolean; error?: string; latencyMs: number }>
   exportSave(options: ExportSaveOptions): Promise<ExportSaveResult>
   /** 通用设置项（白名单键，存缓存库 meta 表） */
   settingGet(key: string): Promise<string | null>
   settingSet(key: string, value: string): Promise<void>
   /** 在系统浏览器打开链接（仅 http/https） */
   openExternal(url: string): Promise<void>
+  // 团队仓库（配置层）
+  teamRepoInit(): Promise<any>
+  teamRepoStatus(): Promise<any>
+  teamRepoAddRemote(url: string): Promise<any>
+  teamRepoPush(): Promise<any>
+  teamRepoPull(): Promise<any>
+  teamRepoSkills(): Promise<any>
+  teamRepoRules(): Promise<any>
+  teamRepoGetSkill(name: string): Promise<any>
+  teamRepoGetRule(name: string): Promise<any>
+  teamRepoSaveSkill(name: string, content: any): Promise<any>
+  teamRepoSaveRule(name: string, content: string): Promise<any>
+  teamRepoSyncConfig(): Promise<any>
+  teamRepoSaveSyncConfig(config: any): Promise<any>
+  // 任务管理（执行层）
+  tasksList(): Promise<any[]>
+  tasksGet(taskId: string): Promise<any>
+  tasksCreate(input: any): Promise<any>
+  tasksUpdateStatus(taskId: string, status: string): Promise<any>
+  tasksDecompose(taskId: string): Promise<any>
+  tasksAssignSubTask(taskId: string, subTaskId: string, agentId: string): Promise<any>
+  tasksExecuteSubTask(taskId: string, subTaskId: string): Promise<any>
+  tasksMonitor(taskId: string): Promise<any>
+  tasksCancel(taskId: string): Promise<any>
+  tasksReady(): Promise<any[]>
+  // 任务队列
+  queueStatus(): Promise<any>
+  queueEnqueue(taskId: string, priority: number): Promise<any>
+  queuePause(): Promise<any>
+  queueResume(): Promise<any>
+  queueClear(): Promise<any>
+  queueTaskIds(): Promise<string[]>
+  // 约束管理
+  constraintsList(): Promise<any[]>
+  constraintsAdd(constraint: any): Promise<any>
+  constraintsUpdate(id: string, updates: any): Promise<any>
+  constraintsDelete(id: string): Promise<any>
+  constraintsAgent(agentId: string): Promise<any[]>
+  constraintsValidate(agentId: string, context: any): Promise<any>
+  // 信任度评分
+  trustScores(): Promise<any[]>
+  trustAgent(agentId: string): Promise<any>
+  trustUpdate(agentId: string, success: boolean, duration: number): Promise<any>
+  trustFrictionStats(agentId?: string): Promise<any>
+  trustRank(agentIds: string[]): Promise<any[]>
 }
