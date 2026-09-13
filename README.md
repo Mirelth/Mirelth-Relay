@@ -9,7 +9,6 @@
 | 平台 | 安装包 |
 |---|---|
 | macOS（Apple Silicon） | [agent-tower-1.3.0-arm64.dmg](https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.3.0/agent-tower-1.3.0-arm64.dmg) |
-| macOS（Intel） | [agent-tower-1.3.0-x64.dmg](https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.3.0/agent-tower-1.3.0-x64.dmg) |
 | Windows 10/11（x64） | [agent-tower-1.3.0-setup.exe](https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.3.0/agent-tower-1.3.0-setup.exe) |
 | Linux（AppImage） | [agent-tower-1.3.0.AppImage](https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.3.0/agent-tower-1.3.0.AppImage) |
 | Linux（deb） | [agent-tower_1.3.0_amd64.deb](https://cnb.cool/WeiGuangXunTu/AgentTower/-/releases/download/v1.3.0/agent-tower_1.3.0_amd64.deb) |

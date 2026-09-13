@@ -12,7 +12,7 @@ CNB CI 只跑 build-linux（公开 runner 只有 Linux）
 CI 自动创建 release v1.2.3（草稿）+ 上传 Linux 产物（AppImage/deb）
        ↓
 开发者本地：
-  npm run build:mac   # 产出 2 个 dmg
+  npm run build:mac   # 产出 1 个 arm64 dmg(Intel 版已停止构建)
   npm run build:win   # 产出 1 个 setup.exe
        ↓
 ./scripts/release.sh v1.2.3 --from-local
@@ -65,9 +65,9 @@ pipeline 用 `git:release`（`latest: false`，草稿态）创建 release，然�
 ### 2. 本地构建 mac/win 产物
 
 ```bash
-# macOS（arm64 + x64）
+# macOS（arm64；Intel 版自 1.3.0 起停止构建）
 npm run build:mac
-# 产出：dist/agent-tower-1.2.3-arm64.dmg  +  agent-tower-1.2.3-x64.dmg  +  latest-mac.yml
+# 产出：dist/agent-tower-1.2.3-arm64.dmg  +  latest-mac.yml
 
 # Windows（x64）
 npm run build:win
