@@ -1,13 +1,16 @@
 import * as fs from 'fs'
 import { join } from 'path'
 import { simpleGit } from 'simple-git'
-import type { RepoSecurityFinding, RepoSecurityScanResult } from '@shared/types'
+import type { RepoSecurityFinding, RepoSecurityScanResult, SemgrepEngineInfo } from '@shared/types'
 import { detectSecrets } from './security'
+import { mapSemgrepResults, runSemgrepScan } from './semgrep'
 
 /**
  * 仓库安全审查（只读）：对一个本地代码仓库做三类检查——
  * 1) 工作区文件里的明文密钥；2) 已提交进 Git 的敏感文件（.env / 私钥等）；
- * 3) 敏感文件未写进 .gitignore、可能被意外提交。所有片段均已脱敏。
+ * 3) 敏感文件未写进 .gitignore、可能被意外提交。
+ * 另外可选叠加本地 Semgrep 引擎的代码风险扫描（本机装有 semgrep 时自动启用）。
+ * 所有片段均已脱敏。
  */
 
 const MAX_FILES = 5000
@@ -168,10 +171,9 @@ export async function runRepoSecurityScan(repoDir: string): Promise<RepoSecurity
         path: rel,
         kind: '敏感文件已提交进仓库',
         snippet: isEnvFile(rel) ? '环境变量文件' : '私钥/凭证文件',
-        advice:
-          isEnvFile(rel)
-            ? '环境变量文件通常含真实密钥，不应纳入版本控制。用 git rm --cached 移出跟踪、加入 .gitignore，并轮换其中所有密钥。'
-            : '私钥/凭证文件不应纳入版本控制。用 git rm --cached 移出跟踪、加入 .gitignore，并视为已泄露、立即轮换。'
+        advice: isEnvFile(rel)
+          ? '环境变量文件通常含真实密钥，不应纳入版本控制。用 git rm --cached 移出跟踪、加入 .gitignore，并轮换其中所有密钥。'
+          : '私钥/凭证文件不应纳入版本控制。用 git rm --cached 移出跟踪、加入 .gitignore，并视为已泄露、立即轮换。'
       })
     }
 
@@ -216,9 +218,34 @@ export async function runRepoSecurityScan(repoDir: string): Promise<RepoSecurity
         path: '.gitignore',
         kind: '.gitignore 缺少 .env 规则',
         snippet: '.env 未被忽略规则覆盖',
-        advice: '在 .gitignore 中加入 ".env"（及其变体如 .env.local），从源头防止环境变量文件被提交。'
+        advice:
+          '在 .gitignore 中加入 ".env"（及其变体如 .env.local），从源头防止环境变量文件被提交。'
       })
     }
+  }
+
+  // 可选增强引擎：本机装有 semgrep 时叠加本地代码风险扫描；未安装则静默降级
+  let semgrep: SemgrepEngineInfo = { available: false }
+  try {
+    const outcome = await runSemgrepScan(repo)
+    semgrep = {
+      available: outcome.available,
+      version: outcome.version,
+      rules: outcome.rules,
+      found: outcome.found,
+      error: outcome.error
+    }
+    if (outcome.available && outcome.results.length > 0) {
+      const existing = new Set(findings.map((f) => `${f.path}:${f.line}`))
+      const mapped = mapSemgrepResults(outcome.results, repo, existing)
+      for (const f of mapped) {
+        if (findings.length >= MAX_FINDINGS) break
+        findings.push({ ...f, id: `repo-${++seq}` })
+      }
+    }
+  } catch {
+    // 引擎层兜底：任何意外都不应影响基础检查结果
+    semgrep = { available: false }
   }
 
   const rank = { high: 0, medium: 1, info: 2 }
@@ -229,6 +256,7 @@ export async function runRepoSecurityScan(repoDir: string): Promise<RepoSecurity
     isGitRepo: isGit,
     scannedFiles,
     truncated,
+    semgrep,
     findings
   }
 }

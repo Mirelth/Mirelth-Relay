@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   AlertTriangle,
+  Bug,
   FileLock2,
   FolderSearch,
   GitBranch,
@@ -33,7 +34,9 @@ type CommonFinding = {
 const CATEGORY_ICON: Record<string, React.ReactNode> = {
   'loose-permissions': <FileLock2 size={16} />,
   'committed-env': <GitBranch size={16} />,
-  'gitignore-missing': <FolderSearch size={16} />
+  'gitignore-missing': <FolderSearch size={16} />,
+  'code-risk': <Bug size={16} />,
+  'code-secret': <KeyRound size={16} />
 }
 
 function FindingList({ findings }: { findings: CommonFinding[] }) {
@@ -218,7 +221,11 @@ function AgentAudit(): React.JSX.Element {
         </div>
       )}
 
-      <SummaryCards scanned={result ? result.scannedFiles : '—'} highs={result ? highs : '—'} meds={result ? meds : '—'} />
+      <SummaryCards
+        scanned={result ? result.scannedFiles : '—'}
+        highs={result ? highs : '—'}
+        meds={result ? meds : '—'}
+      />
 
       {!scanning && !error && result && findings.length === 0 && (
         <CleanState
@@ -278,7 +285,8 @@ function RepoAudit(): React.JSX.Element {
     <div className="space-y-4">
       <div className="text-sm" style={{ color: 'var(--muted)' }}>
         对一个本地代码仓库做只读安全审查：工作区明文密钥、已提交的 .env/私钥等敏感文件、.gitignore
-        覆盖情况。不联网、不改动任何文件，密钥片段均已脱敏。
+        覆盖情况；本机装有 Semgrep 时还会自动叠加离线的代码风险扫描（eval
+        动态执行、命令拼接、硬编码口令、内嵌私钥等）。不联网、不改动任何文件，密钥片段均已脱敏。
       </div>
 
       <div className="card flex flex-wrap items-center gap-2 p-3">
@@ -311,7 +319,10 @@ function RepoAudit(): React.JSX.Element {
         <>
           <SummaryCards scanned={result.scannedFiles} highs={highs} meds={meds} />
 
-          <div className="flex flex-wrap items-center gap-3 text-xs" style={{ color: 'var(--muted)' }}>
+          <div
+            className="flex flex-wrap items-center gap-3 text-xs"
+            style={{ color: 'var(--muted)' }}
+          >
             <span className="font-mono">{result.repo}</span>
             <span
               className="badge"
@@ -323,10 +334,29 @@ function RepoAudit(): React.JSX.Element {
               {result.isGitRepo ? 'Git 仓库' : '普通目录（未发现 .git）'}
             </span>
             <span>审查时间 {formatDate(result.at)}</span>
-            {result.truncated && (
-              <span style={{ color: 'var(--warn)' }}>
-                文件数超过上限，仅扫描了前 5000 个文件
+            {result.semgrep?.available ? (
+              <span
+                className="badge"
+                title="本地 Semgrep 引擎（离线规则），本次审查已叠加代码风险扫描"
+                style={{
+                  background: 'color-mix(in srgb, var(--ok) 14%, transparent)',
+                  color: 'var(--ok)'
+                }}
+              >
+                <Bug size={11} className="mr-1 inline" />
+                Semgrep {result.semgrep.version ?? ''} · 本地规则 {result.semgrep.rules ?? 0} 条
+                {result.semgrep.error ? ' · 部分出错' : ''}
               </span>
+            ) : (
+              <span
+                title="安装 Semgrep 后可增强检测：brew install semgrep"
+                style={{ color: 'var(--muted)' }}
+              >
+                未启用 Semgrep（可选增强：brew install semgrep）
+              </span>
+            )}
+            {result.truncated && (
+              <span style={{ color: 'var(--warn)' }}>文件数超过上限，仅扫描了前 5000 个文件</span>
             )}
           </div>
 

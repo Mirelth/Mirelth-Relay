@@ -73,6 +73,23 @@ export function detectSecrets(text: string): SecretHit[] {
   return hits
 }
 
+/**
+ * 对一段文本里的密钥形态就地脱敏（命名密钥整体替换，KV 型只替换值）。
+ * 用于第三方引擎（如 semgrep）返回的片段，保证展示内容永不包含完整密钥。
+ */
+export function maskSecretsInText(text: string): string {
+  let out = text
+  for (const p of NAMED_PATTERNS) {
+    const re = new RegExp(p.re.source, p.re.flags)
+    out = out.replace(re, (m) => maskSecret(m))
+  }
+  const kv = new RegExp(KV_RE.source, KV_RE.flags)
+  out = out.replace(kv, (m, _k: string, v: string) =>
+    looksSecret(v) ? m.slice(0, m.length - v.length) + maskSecret(v) : m
+  )
+  return out
+}
+
 const MAX_FILE_BYTES = 2 * 1024 * 1024
 
 function modeOf(p: string): number | null {

@@ -400,7 +400,7 @@ export interface SecurityScanResult {
 export interface RepoSecurityFinding {
   id: string
   severity: 'high' | 'medium' | 'info'
-  category: 'plaintext-secret' | 'committed-env' | 'gitignore-missing'
+  category: 'plaintext-secret' | 'committed-env' | 'gitignore-missing' | 'code-secret' | 'code-risk'
   /** 相对仓库根的路径 */
   path: string
   line?: number
@@ -408,6 +408,18 @@ export interface RepoSecurityFinding {
   /** 已脱敏的片段（永不包含完整密钥） */
   snippet: string
   advice: string
+}
+
+/** 可选的本地 Semgrep 引擎状态（未安装时 available:false） */
+export interface SemgrepEngineInfo {
+  available: boolean
+  version?: string
+  /** 本次启用的内置本地规则条数 */
+  rules?: number
+  /** 引擎原始命中条数（去重/限量前） */
+  found?: number
+  /** 引擎运行出错时的说明（不影响其余检查结果） */
+  error?: string
 }
 
 export interface RepoSecurityScanResult {
@@ -419,6 +431,7 @@ export interface RepoSecurityScanResult {
   scannedFiles: number
   /** 文件数超上限、未扫全 */
   truncated: boolean
+  semgrep?: SemgrepEngineInfo
   findings: RepoSecurityFinding[]
 }
 
