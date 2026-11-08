@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Relay · 智能体中继</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 12a8 8 0 0 1 8-8" /><path d="M20 12a8 8 0 0 1-8 8" />
+              <path d="M8 8h4a2 2 0 0 1 2 2v4" /><circle cx="8" cy="8" r="1.4" /><circle cx="16" cy="16" r="1.4" />
+            </svg>
+          </div>
+          <div>
+            <div class="brand-name">Relay</div>
+            <div class="brand-tag">智能体中继</div>
+          </div>
+        </div>
+
+        <nav class="nav">
+          <a class="nav-item active" data-route="overview" href="#/overview"><span class="nav-icon">◈</span>概览</a>
+          <a class="nav-item" data-route="records" href="#/records"><span class="nav-icon">▤</span>Token 明细</a>
+          <a class="nav-item" data-route="settings" href="#/settings"><span class="nav-icon">⚙</span>网关设置</a>
+        </nav>
+
+        <div class="sidebar-foot">
+          <div class="gw-status"><span class="dot" id="dot"></span><span id="gwState">连接中…</span></div>
+          <div class="gw-addr" id="gwAddr">—</div>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <h1 id="pageTitle">概览</h1>
+            <p id="pageSubtitle">只统计经本地网关出去的 Token 消耗</p>
+          </div>
+          <div class="top-actions">
+            <button class="btn ghost" id="btnRefresh">刷新</button>
+          </div>
+        </header>
+
+        <div id="banner" class="banner hidden"></div>
+
+        <section class="page" id="page-overview">
+          <div class="cards">
+            <div class="card stat"><div class="stat-label">今日 Token</div><div class="stat-value" id="statToday">—</div><div class="stat-hint" id="hintToday">本地时间 00:00 起</div></div>
+            <div class="card stat"><div class="stat-label">近 7 日</div><div class="stat-value" id="statWeek">—</div><div class="stat-hint">含缓存与推理 token</div></div>
+            <div class="card stat"><div class="stat-label">累计请求</div><div class="stat-value" id="statRequests">—</div><div class="stat-hint" id="hintModels">— 个模型</div></div>
+            <div class="card stat"><div class="stat-label">估算成本</div><div class="stat-value" id="statCost">—</div><div class="stat-hint">按内置参考单价 · CNY</div></div>
+          </div>
+
+          <div class="grid-2">
+            <div class="card">
+              <div class="card-head"><h2>14 天消耗趋势</h2><span class="muted" id="trendTotal"></span></div>
+              <div id="chart" class="chart"></div>
+            </div>
+            <div class="card">
+              <div class="card-head"><h2>模型分布</h2><span class="muted">按累计 Token</span></div>
+              <div id="modelBars" class="bars"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="page hidden" id="page-records">
+          <div class="card">
+            <div class="card-head">
+              <h2>聚合统计</h2>
+              <div class="filters">
+                <select id="dim"><option value="day">按天</option><option value="model">按模型</option><option value="source">按来源</option></select>
+                <select id="days"><option value="7">近 7 天</option><option value="14" selected>近 14 天</option><option value="30">近 30 天</option><option value="90">近 90 天</option></select>
+              </div>
+            </div>
+            <div id="aggTable" class="table-wrap"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h2>最近请求</h2><span class="muted">最新 100 条 · 只含网关出口</span></div>
+            <div id="recordTable" class="table-wrap"></div>
+          </div>
+        </section>
+
+        <section class="page hidden" id="page-settings">
+          <div class="card">
+            <div class="card-head"><h2>网关</h2><span class="muted">OpenAI 兼容 · 仅监听 127.0.0.1</span></div>
+            <div class="form-grid">
+              <label>端口<input type="number" id="cfgPort" min="1024" max="65535" /></label>
+              <label>汇率 (CNY/USD)<input type="number" id="cfgRate" step="0.01" /></label>
+              <label class="wide">API Key
+                <div class="inline">
+                  <input type="text" id="cfgKey" readonly />
+                  <button class="btn ghost" id="btnReveal">显示</button>
+                  <button class="btn ghost" id="btnCopy">复制</button>
+                  <button class="btn ghost" id="btnRegen">重新生成</button>
+                </div>
+              </label>
+            </div>
+            <div class="hint-box">把客户端的 Base URL 指向 <code id="cfgEndpoint">—</code>，并在 Authorization 中使用上面的 Key。切换端口会重启本地网关。</div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h2>上游模型</h2><span class="muted">模型名 / Base URL / API Key</span></div>
+            <div id="upstreamList" class="upstream-list"></div>
+            <div class="form-grid add-form">
+              <label>名称<input id="upName" placeholder="例如 DeepSeek" /></label>
+              <label>模型 ID<input id="upModel" placeholder="deepseek-chat" /></label>
+              <label class="wide">Base URL<input id="upBase" placeholder="https://api.example.com/v1" /></label>
+              <label class="wide">API Key<input id="upKey" type="password" placeholder="sk-..." /></label>
+            </div>
+            <div class="form-actions">
+              <button class="btn ghost" id="btnAddUp">添加上游</button>
+              <button class="btn primary" id="btnSave">保存设置</button>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script src="./app.js"></script>
+  </body>
+</html>

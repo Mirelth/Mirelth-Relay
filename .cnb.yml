@@ -1,123 +1,80 @@
-# CNB 云原生构建流水线
+# CNB 云原生构建流水线（Go + Wails 单运行时）
 # ============================================================
-# verify（push/PR/api）：node:22 跑 typecheck + test
-# tag_push.build-linux：CNB 公开 runner（linux/amd64）跑 electron-builder
-#   关键约束：CNB 公开 runner 只有 Linux（cnb:arch:amd64 / arm64:v8），
-#   macOS / Windows 没有公开 runner，必须自建 runner 或者开发者本地跑。
-#   本仓库未配置自建 mac/win runner，因此 tag_push 阶段只跑 Linux。
-#   mac/win 安装包仍由开发者本地跑 npm run build:mac / build:win 产出，
-#   然后用 scripts/release.sh 上传（详见 docs/RELEASE.md）。
-# 关键 CNB 环境变量（已对照官方文档）：
-#   CNB_BRANCH        — tag 名（tag_push 时）
-#   CNB_REPO_URL_HTTPS — 仓库 HTTPS 克隆地址
-#   CNB_BUILD_WORKSPACE — 工作目录路径
+# verify（push/PR）：Go vet + 单测 + 前端类型检查与构建
+# tag_push.build-linux：在 Linux runner 上编译 Wails 二进制（需要 GTK/WebKit2GTK）
+#   说明：macOS / Windows 安装包仍需自建 runner 或本地跑 scripts/build-wails.sh，
+#   产物上传与版本说明见 docs/RELEASE.md。
 # ============================================================
 
 main:
   push:
     - name: verify
       docker:
-        image: node:22
+        image: golang:1.26
       stages:
-        - name: 安装依赖
+        - name: Go 检查
           jobs:
-            - name: npm ci + electron
-              # --ignore-scripts 跳过原生模块 rebuild（避免 better-sqlite3 等在 CI 里编译失败），
-              # 但 electron 包自己的 postinstall.js 也要跑（下载 electron 二进制），
-              # 所以显式调一下 install.js
+            - name: vet
               script: |
-                npm ci --ignore-scripts --registry=https://registry.npmmirror.com
-                node node_modules/electron/install.js
-        - name: 类型检查与单元测试
-          jobs:
-            - name: typecheck
-              script: npm run typecheck
+                go vet ./...
             - name: test
-              script: npm test
+              script: |
+                go test ./...
+        - name: 前端检查
+          jobs:
+            - name: typecheck & build
+              image: node:22
+              script: |
+                cd frontend
+                npm ci --registry=https://registry.npmmirror.com
+                ./node_modules/.bin/tsc --noEmit -p tsconfig.json
+                ./node_modules/.bin/vite build
+
   pull_request:
     - name: verify-pr
       docker:
-        image: node:22
+        image: golang:1.26
       stages:
-        - name: 安装依赖
+        - name: Go 检查
           jobs:
-            - name: npm ci + electron
+            - name: vet & test
               script: |
-                npm ci --ignore-scripts --registry=https://registry.npmmirror.com
-                node node_modules/electron/install.js
-        - name: 类型检查与单元测试
+                go vet ./...
+                go test ./...
+        - name: 前端检查
           jobs:
             - name: typecheck
-              script: npm run typecheck
-            - name: test
-              script: npm test
-  api_trigger:
-    - name: verify-manual
-      docker:
-        image: node:22
-      stages:
-        - name: 安装依赖
-          jobs:
-            - name: npm ci + electron
+              image: node:22
               script: |
-                npm ci --ignore-scripts --registry=https://registry.npmmirror.com
-                node node_modules/electron/install.js
-        - name: 类型检查与单元测试
-          jobs:
-            - name: typecheck
-              script: npm run typecheck
-            - name: test
-              script: npm test
+                cd frontend
+                npm ci --registry=https://registry.npmmirror.com
+                ./node_modules/.bin/tsc --noEmit -p tsconfig.json
 
-  # tag 触发：只跑 Linux 公开 runner（CNB 没有 mac/win 公开 runner）
-  # 用 `$:` 而不是 `main:` —— tag 名是 v1.1.1，main: 不会匹配
-  # `$:` 是 CNB 的通配符，匹配所有分支和所有 tag 名
-$:
   tag_push:
     - name: build-linux
       runner:
         tags: cnb:arch:amd64
       docker:
-        image: node:22
+        image: golang:1.26
       stages:
-        - name: checkout & install
+        - name: 安装 Wails 依赖
           jobs:
-            - name: install
+            - name: apt
               script: |
-                # /workspace 是挂载点不能 rm，把仓库 clone 到子目录
-                git clone --depth 1 "$CNB_REPO_URL_HTTPS" "$CNB_BUILD_WORKSPACE/repo"
-                cd "$CNB_BUILD_WORKSPACE/repo"
-                npm ci --ignore-scripts --registry=https://registry.npmmirror.com
-                # 显式触发 electron 二进制下载（--ignore-scripts 跳过了 postinstall）
-                node node_modules/electron/install.js
-        - name: build
+                apt-get update
+                apt-get install -y --no-install-recommends \
+                  libgtk-3-dev libwebkit2gtk-4.1-dev pkg-config nodejs npm
+        - name: 构建
           jobs:
-            - name: electron-builder
+            - name: wails build
               script: |
-                cd "$CNB_BUILD_WORKSPACE/repo"
-                export ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
-                export ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/
-                npm run build
-                npx electron-builder --linux --publish never
-                # 上传 stage (cnbcool/attachments) 跑在独立 docker 容器里，扫 \$CNB_BUILD_WORKSPACE 根目录。
-                # 物理复制 dist 过去（软链跨容器可能不解析）
-                mkdir -p "$CNB_BUILD_WORKSPACE/dist"
-                cp -r "$CNB_BUILD_WORKSPACE/repo/dist/." "$CNB_BUILD_WORKSPACE/dist/"
-        - name: create release
-          type: git:release
-          options:
-            title: $CNB_BRANCH
-            description: "由 CI 自动创建（仅含 Linux 产物，macOS/Windows 由开发者本地补充）"
-            latest: false   # 留到 scripts/release.sh 标记 latest
-        - name: upload
-          image: cnbcool/attachments:latest
-          settings:
-            tag: $CNB_BRANCH
-            attachments:
-              # AppImage 用连字符：agent-tower-1.1.1.AppImage
-              - "dist/agent-tower-*.AppImage"
-              # deb / snap 用下划线（electron-builder 默认 artifactName）：agent-tower_1.1.1_amd64.deb / .snap
-              - "dist/agent-tower_*_amd64.deb"
-              - "dist/agent-tower_*_amd64.snap"
-              # latest-linux.yml 由 --publish never 跳过生成；如启用 Linux 自动更新需
-              # 在 electron-builder.yml.linux 加 publish 配置并去掉 --publish never。
+                export PATH="$HOME/go/bin:$PATH"
+                go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.1
+                (cd frontend && npm ci --registry=https://registry.npmmirror.com && npm run build)
+                wails build -platform linux/amd64 -o relay
+        - name: 产物
+          jobs:
+            - name: 列出构建结果
+              script: |
+                ls -la build/bin || true
+                echo "将 build/bin 下的产物按 docs/RELEASE.md 上传"
